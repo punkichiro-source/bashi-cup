@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TransactionsRouteImport } from './routes/transactions'
 import { Route as RankingRouteImport } from './routes/ranking'
 import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IndexRouteImport } from './routes/index'
 
+const TransactionsRoute = TransactionsRouteImport.update({
+  id: '/transactions',
+  path: '/transactions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const RankingRoute = RankingRouteImport.update({
   id: '/ranking',
   path: '/ranking',
@@ -40,12 +46,14 @@ export interface FileRoutesByFullPath {
   '/home': typeof HomeRoute
   '/matches': typeof MatchesRoute
   '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
   '/matches': typeof MatchesRoute
   '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,13 +61,14 @@ export interface FileRoutesById {
   '/home': typeof HomeRoute
   '/matches': typeof MatchesRoute
   '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home' | '/matches' | '/ranking'
+  fullPaths: '/' | '/home' | '/matches' | '/ranking' | '/transactions'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home' | '/matches' | '/ranking'
-  id: '__root__' | '/' | '/home' | '/matches' | '/ranking'
+  to: '/' | '/home' | '/matches' | '/ranking' | '/transactions'
+  id: '__root__' | '/' | '/home' | '/matches' | '/ranking' | '/transactions'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -67,10 +76,18 @@ export interface RootRouteChildren {
   HomeRoute: typeof HomeRoute
   MatchesRoute: typeof MatchesRoute
   RankingRoute: typeof RankingRoute
+  TransactionsRoute: typeof TransactionsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/transactions': {
+      id: '/transactions'
+      path: '/transactions'
+      fullPath: '/transactions'
+      preLoaderRoute: typeof TransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ranking': {
       id: '/ranking'
       path: '/ranking'
@@ -107,6 +124,7 @@ const rootRouteChildren: RootRouteChildren = {
   HomeRoute: HomeRoute,
   MatchesRoute: MatchesRoute,
   RankingRoute: RankingRoute,
+  TransactionsRoute: TransactionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
