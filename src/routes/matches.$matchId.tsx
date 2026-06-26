@@ -110,9 +110,8 @@ function MatchDetailPage() {
     }
   }
 
-  function updateRow(i: number, patch: Partial<GoalRow>) {
-    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  }
+
+
 
   return (
     <AppShell title="試合詳細">
