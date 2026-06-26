@@ -9,38 +9,174 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TransactionsRouteImport } from './routes/transactions'
+import { Route as RankingRouteImport } from './routes/ranking'
+import { Route as MatchesRouteImport } from './routes/matches'
+import { Route as HomeRouteImport } from './routes/home'
+import { Route as ChampionRouteImport } from './routes/champion'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as MatchesMatchIdRouteImport } from './routes/matches.$matchId'
 
+const TransactionsRoute = TransactionsRouteImport.update({
+  id: '/transactions',
+  path: '/transactions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const RankingRoute = RankingRouteImport.update({
+  id: '/ranking',
+  path: '/ranking',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MatchesRoute = MatchesRouteImport.update({
+  id: '/matches',
+  path: '/matches',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChampionRoute = ChampionRouteImport.update({
+  id: '/champion',
+  path: '/champion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MatchesMatchIdRoute = MatchesMatchIdRouteImport.update({
+  id: '/$matchId',
+  path: '/$matchId',
+  getParentRoute: () => MatchesRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/champion': typeof ChampionRoute
+  '/home': typeof HomeRoute
+  '/matches': typeof MatchesRouteWithChildren
+  '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/champion': typeof ChampionRoute
+  '/home': typeof HomeRoute
+  '/matches': typeof MatchesRouteWithChildren
+  '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRoute
+  '/champion': typeof ChampionRoute
+  '/home': typeof HomeRoute
+  '/matches': typeof MatchesRouteWithChildren
+  '/ranking': typeof RankingRoute
+  '/transactions': typeof TransactionsRoute
+  '/matches/$matchId': typeof MatchesMatchIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/champion'
+    | '/home'
+    | '/matches'
+    | '/ranking'
+    | '/transactions'
+    | '/matches/$matchId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/admin'
+    | '/champion'
+    | '/home'
+    | '/matches'
+    | '/ranking'
+    | '/transactions'
+    | '/matches/$matchId'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/champion'
+    | '/home'
+    | '/matches'
+    | '/ranking'
+    | '/transactions'
+    | '/matches/$matchId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRoute: typeof AdminRoute
+  ChampionRoute: typeof ChampionRoute
+  HomeRoute: typeof HomeRoute
+  MatchesRoute: typeof MatchesRouteWithChildren
+  RankingRoute: typeof RankingRoute
+  TransactionsRoute: typeof TransactionsRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/transactions': {
+      id: '/transactions'
+      path: '/transactions'
+      fullPath: '/transactions'
+      preLoaderRoute: typeof TransactionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/ranking': {
+      id: '/ranking'
+      path: '/ranking'
+      fullPath: '/ranking'
+      preLoaderRoute: typeof RankingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/matches': {
+      id: '/matches'
+      path: '/matches'
+      fullPath: '/matches'
+      preLoaderRoute: typeof MatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/champion': {
+      id: '/champion'
+      path: '/champion'
+      fullPath: '/champion'
+      preLoaderRoute: typeof ChampionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,22 +184,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/matches/$matchId': {
+      id: '/matches/$matchId'
+      path: '/$matchId'
+      fullPath: '/matches/$matchId'
+      preLoaderRoute: typeof MatchesMatchIdRouteImport
+      parentRoute: typeof MatchesRoute
+    }
   }
 }
 
+interface MatchesRouteChildren {
+  MatchesMatchIdRoute: typeof MatchesMatchIdRoute
+}
+
+const MatchesRouteChildren: MatchesRouteChildren = {
+  MatchesMatchIdRoute: MatchesMatchIdRoute,
+}
+
+const MatchesRouteWithChildren =
+  MatchesRoute._addFileChildren(MatchesRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRoute: AdminRoute,
+  ChampionRoute: ChampionRoute,
+  HomeRoute: HomeRoute,
+  MatchesRoute: MatchesRouteWithChildren,
+  RankingRoute: RankingRoute,
+  TransactionsRoute: TransactionsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
