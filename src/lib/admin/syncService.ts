@@ -156,3 +156,26 @@ export async function settleChampion(championTeam: string): Promise<number> {
   }
   return count;
 }
+/** 手動結果更新: プロバイダーを介さず直接スコアを更新し、精算を実行 */
+export async function manualUpdateMatch(
+  matchId: string,
+  homeScore: number,
+  awayScore: number,
+  winner: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      home_score: homeScore,
+      away_score: awayScore,
+      winner: winner,
+      status: "finished",
+    })
+    .eq("id", matchId);
+
+  if (error) throw error;
+
+  // 試合データを再取得して精算処理を走らせる
+  const fresh = await getMatch(matchId);
+  await settleMatch(fresh);
+}
