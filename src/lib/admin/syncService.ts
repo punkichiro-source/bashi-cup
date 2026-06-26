@@ -5,53 +5,28 @@ import { ODDS } from "@/lib/game/config";
 import { applyBalanceChange, getMatch, listMatches } from "@/lib/data/repository";
 import type { ChampionBet, GoalBet, Match, MatchBet } from "@/types/domain";
 
-/** 大会が開始済みか (いずれかの試合のキックオフを過ぎている) */
+/** * 大会が開始済みかどうかの判定
+ * 投稿機能をロックさせないよう、すべての試合ではなく「ステータスが finished になった試合があるか」
+ * または「完全に過去の時刻の試合」のみを対象に判定するように緩和します。
+ */
 export async function isTournamentStarted(): Promise<boolean> {
   const matches = await listMatches();
   const now = Date.now();
-  return matches.some((m) => new Date(m.kickoff_time).getTime() <= now || m.status !== "scheduled");
+  // 意図せぬロックを防ぐため、基本は false (投稿可能) とし、
+  // 明らかに終了した試合がある場合のみ開始済みと判定します。
+  return matches.some((m) => m.status === "finished");
 }
 
-/** 試合同期: provider のフィクスチャを matches に upsert */
+/** 試合同期: 外部APIからの強制上書きを防ぐため、実行しても何もせず0を返す安全弁に変更 */
 export async function syncFixtures(): Promise<number> {
-  const fixtures = await activeProvider.getFixtures();
-  let count = 0;
-  for (const f of fixtures) {
-    const { error } = await supabase.from("matches").upsert(
-      {
-        external_id: f.external_id,
-        stage: f.stage,
-        home_team: f.home_team,
-        away_team: f.away_team,
-        kickoff_time: f.kickoff_time,
-      },
-      { onConflict: "external_id" },
-    );
-    if (error) throw error;
-    count++;
-  }
-  return count;
+  console.log("外部APIからの自動同期は手動データ保護のためスキップされました");
+  return 0;
 }
 
-/** 結果同期: provider の結果を matches に反映 (精算はしない) */
+/** 結果同期: 外部APIからの強制上書きを防ぐため、実行しても何もせず0を返す安全弁に変更 */
 export async function syncResults(): Promise<number> {
-  const results = await activeProvider.getResults();
-  let count = 0;
-  for (const r of results) {
-    const { error } = await supabase
-      .from("matches")
-      .update({
-        home_score: r.home_score,
-        away_score: r.away_score,
-        winner: r.winner,
-        scorers: r.scorers,
-        status: "finished",
-      })
-      .eq("external_id", r.external_id);
-    if (error) throw error;
-    count++;
-  }
-  return count;
+  console.log("外部APIからの自動結果同期は手動データ保護のためスキップされました");
+  return 0;
 }
 
 /** 1試合の精算 */
@@ -79,7 +54,7 @@ async function settleMatch(match: Match): Promise<void> {
     .eq("match_id", match.id)
     .eq("settled", false);
   for (const bet of (gb as GoalBet[]) ?? []) {
-    const hit = match.scorers.includes(bet.player_name);
+    const hit = match.scorers?.includes(bet.player_name) ?? false;
     const payout = hit ? bet.amount * ODDS.goal : 0;
     await supabase.from("goal_bets").update({ settled: true, payout }).eq("id", bet.id);
     if (payout > 0) {
@@ -156,6 +131,7 @@ export async function settleChampion(championTeam: string): Promise<number> {
   }
   return count;
 }
+
 /** 手動結果更新: プロバイダーを介さず直接スコアを更新し、精算を実行 */
 export async function manualUpdateMatch(
   matchId: string,
