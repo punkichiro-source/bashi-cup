@@ -11,6 +11,7 @@ import {
   settleChampion,
   syncFixtures,
   syncResults,
+  manualUpdateMatch,
 } from "@/lib/admin/syncService";
 
 export const Route = createFileRoute("/admin")({
@@ -129,6 +130,44 @@ function AdminPage() {
           )}
         </div>
       </section>
+      <section className="mt-6 space-y-3">
+  <h2 className="text-sm font-medium text-muted-foreground">手動スコア更新 (バックアップ)</h2>
+  <div className="space-y-2">
+    {matches?.map((m) => (
+      <div key={m.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 gap-2">
+        <span className="text-xs truncate w-1/3">{m.home_team} vs {m.away_team}</span>
+        <div className="flex items-center gap-1">
+          <input 
+            type="number" 
+            defaultValue={m.home_score ?? 0} 
+            className="w-10 rounded border bg-background p-1 text-center text-sm"
+            id={`hs-${m.id}`}
+          />
+          <span className="text-muted-foreground">:</span>
+          <input 
+            type="number" 
+            defaultValue={m.away_score ?? 0} 
+            className="w-10 rounded border bg-background p-1 text-center text-sm"
+            id={`as-${m.id}`}
+          />
+        </div>
+        <button
+          disabled={!!busy}
+          className="rounded-lg border border-primary px-3 py-1 text-xs text-primary disabled:opacity-40"
+          onClick={async () => {
+            const h = parseInt((document.getElementById(`hs-${m.id}`) as HTMLInputElement).value);
+            const a = parseInt((document.getElementById(`as-${m.id}`) as HTMLInputElement).value);
+            const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
+
+            await run("manual" + m.id, () => manualUpdateMatch(m.id, h, a, winner), () => "手動でスコアと精算を更新しました");
+          }}
+        >
+          更新・精算
+        </button>
+      </div>
+    ))}
+  </div>
+</section>
     </AppShell>
   );
 }
