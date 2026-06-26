@@ -9,9 +9,15 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as MatchesRouteImport } from './routes/matches'
 import { Route as HomeRouteImport } from './routes/home'
 import { Route as IndexRouteImport } from './routes/index'
 
+const MatchesRoute = MatchesRouteImport.update({
+  id: '/matches',
+  path: '/matches',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const HomeRoute = HomeRouteImport.update({
   id: '/home',
   path: '/home',
@@ -26,31 +32,42 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
+  '/matches': typeof MatchesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
+  '/matches': typeof MatchesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/home': typeof HomeRoute
+  '/matches': typeof MatchesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/home'
+  fullPaths: '/' | '/home' | '/matches'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/home'
-  id: '__root__' | '/' | '/home'
+  to: '/' | '/home' | '/matches'
+  id: '__root__' | '/' | '/home' | '/matches'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   HomeRoute: typeof HomeRoute
+  MatchesRoute: typeof MatchesRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/matches': {
+      id: '/matches'
+      path: '/matches'
+      fullPath: '/matches'
+      preLoaderRoute: typeof MatchesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/home': {
       id: '/home'
       path: '/home'
@@ -71,6 +88,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   HomeRoute: HomeRoute,
+  MatchesRoute: MatchesRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
