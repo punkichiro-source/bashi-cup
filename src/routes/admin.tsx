@@ -6,12 +6,12 @@ import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
 import { listMatches } from "@/lib/data/repository";
 import {
+  manualUpdateMatch,
   reSettleMatch,
   runSettlement,
   settleChampion,
   syncFixtures,
   syncResults,
-  manualUpdateMatch,
 } from "@/lib/admin/syncService";
 
 export const Route = createFileRoute("/admin")({
@@ -28,9 +28,15 @@ function AdminPage() {
 
   const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: listMatches });
 
+  // 管理者名を「Endy」または「ENDY」または既存のis_adminフラグで判定
+  const isEndyAdmin = user && (user.is_admin || user.username?.toUpperCase() === "ENDY" || user.id === "endy");
+
   useEffect(() => {
-    if (!loading && (!user || !user.is_admin)) navigate({ to: "/home" });
-  }, [loading, user, navigate]);
+    if (!loading && !isEndyAdmin) {
+      toast.error("管理者権限がありません（Endy専用）");
+      navigate({ to: "/home" });
+    }
+  }, [loading, isEndyAdmin, navigate]);
 
   async function run(key: string, fn: () => Promise<unknown>, msg: (r: unknown) => string) {
     setBusy(key);
@@ -47,37 +53,96 @@ function AdminPage() {
 
   const teams = [...new Set((matches ?? []).flatMap((m) => [m.home_team, m.away_team]))].sort();
 
-  if (!user?.is_admin) return null;
+  if (!isEndyAdmin) return null;
 
   return (
-    <AppShell title="管理画面">
-      <section className="space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">同期</h2>
-        <button
-          disabled={!!busy}
-          onClick={() => run("fix", syncFixtures, (n) => `${n}件の試合を同期しました`)}
-          className="w-full rounded-xl border border-border bg-card py-3 text-sm font-medium disabled:opacity-40"
-        >
-          試合同期 (Fixtures)
-        </button>
-        <button
-          disabled={!!busy}
-          onClick={() => run("res", syncResults, (n) => `${n}件の結果を取得しました`)}
-          className="w-full rounded-xl border border-border bg-card py-3 text-sm font-medium disabled:opacity-40"
-        >
-          結果同期 (Results)
-        </button>
+    <AppShell title="管理画面 (Endy専用)">
+      <section className="space-y-3 bg-red-500/10 p-4 rounded-xl border border-red-500/20">
+        <h2 className="text-sm font-bold text-red-500">※注意：データ同期について</h2>
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          手動で投入した「正しい日本時間データ」が外部APIで上書きされるのを防ぐため、自動同期ボタンの使用にはご注意ください。基本は下の「手動スコア更新」をご利用ください。
+        </p>
+        <div className="grid grid-cols-2 gap-2 pt-2">
+          <button
+            disabled={!!busy}
+            onClick={() => {
+              if(confirm("外部データで試合情報が上書きされます。よろしいですか？")) {
+                run("fix", syncFixtures, (n) => `${n}件の試合を同期しました`);
+              }
+            }}
+            className="rounded-lg border border-border bg-card py-2 text-xs font-medium disabled:opacity-40"
+          >
+            試合同期 (警告あり)
+          </button>
+          <button
+            disabled={!!busy}
+            onClick={() => run("res", syncResults, (n) => `${n}件の結果を取得しました`)}
+            className="rounded-lg border border-border bg-card py-2 text-xs font-medium disabled:opacity-40"
+          >
+            結果同期 (Results)
+          </button>
+        </div>
       </section>
 
       <section className="mt-6 space-y-3">
-        <h2 className="text-sm font-medium text-muted-foreground">精算</h2>
+        <h2 className="text-sm font-medium text-muted-foreground">精算実行</h2>
         <button
           disabled={!!busy}
           onClick={() => run("settle", runSettlement, (n) => `${n}試合を精算しました`)}
           className="w-full rounded-xl gold-gradient py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40"
         >
-          精算実行
+          未精算の試合をすべて精算
         </button>
+      </section>
+
+      <section className="mt-6 space-y-2">
+        <h2 className="text-sm font-medium text-muted-foreground">手動スコア更新 (メイン運用枠)</h2>
+        <p className="text-[11px] text-muted-foreground">ここでスコアを入力して「更新・精算」を押すと、ユーザーの予想への配当支払いまで同時に完了します。</p>
+        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+          {matches?.map((m) => (
+            <div key={m.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 gap-2">
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-[10px] text-muted-foreground font-mono truncate">{m.stage}</span>
+                <span className="text-sm truncate font-medium">{m.home_team} vs {m.away_team}</span>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <input 
+                  type="number" 
+                  defaultValue={m.home_score ?? 0} 
+                  className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
+                  id={`hs-${m.id}`}
+                />
+                <span className="text-muted-foreground font-bold">:</span>
+                <input 
+                  type="number" 
+                  defaultValue={m.away_score ?? 0} 
+                  className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
+                  id={`as-${m.id}`}
+                />
+              </div>
+              <button
+                disabled={!!busy}
+                className="rounded-xl border border-primary px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 disabled:opacity-40 shrink-0"
+                onClick={async () => {
+                  const hVal = (document.getElementById(`hs-${m.id}`) as HTMLInputElement).value;
+                  const aVal = (document.getElementById(`as-${m.id}`) as HTMLInputElement).value;
+                  const h = parseInt(hVal === "" ? "0" : hVal);
+                  const a = parseInt(aVal === "" ? "0" : aVal);
+                  const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
+                  
+                  await run("manual" + m.id, () => manualUpdateMatch(m.id, h, a, winner), () => "手動でスコア更新と精算を完了しました");
+                }}
+              >
+                更新・精算
+              </button>
+            </div>
+          ))}
+          {(!matches || matches.length === 0) && (
+            <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
+              試合データがありません。Supabaseから再投入してください。
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="mt-6 space-y-2">
@@ -130,44 +195,6 @@ function AdminPage() {
           )}
         </div>
       </section>
-      <section className="mt-6 space-y-3">
-  <h2 className="text-sm font-medium text-muted-foreground">手動スコア更新 (バックアップ)</h2>
-  <div className="space-y-2">
-    {matches?.map((m) => (
-      <div key={m.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 gap-2">
-        <span className="text-xs truncate w-1/3">{m.home_team} vs {m.away_team}</span>
-        <div className="flex items-center gap-1">
-          <input 
-            type="number" 
-            defaultValue={m.home_score ?? 0} 
-            className="w-10 rounded border bg-background p-1 text-center text-sm"
-            id={`hs-${m.id}`}
-          />
-          <span className="text-muted-foreground">:</span>
-          <input 
-            type="number" 
-            defaultValue={m.away_score ?? 0} 
-            className="w-10 rounded border bg-background p-1 text-center text-sm"
-            id={`as-${m.id}`}
-          />
-        </div>
-        <button
-          disabled={!!busy}
-          className="rounded-lg border border-primary px-3 py-1 text-xs text-primary disabled:opacity-40"
-          onClick={async () => {
-            const h = parseInt((document.getElementById(`hs-${m.id}`) as HTMLInputElement).value);
-            const a = parseInt((document.getElementById(`as-${m.id}`) as HTMLInputElement).value);
-            const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
-
-            await run("manual" + m.id, () => manualUpdateMatch(m.id, h, a, winner), () => "手動でスコアと精算を更新しました");
-          }}
-        >
-          更新・精算
-        </button>
-      </div>
-    ))}
-  </div>
-</section>
     </AppShell>
   );
 }
