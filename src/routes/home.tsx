@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
 import { listTransactions, nextMatch, rankedUsers } from "@/lib/data/repository";
-import { formatBashi, formatDateTime, formatKickoff } from "@/lib/format";
+import { formatDateTime, formatKickoff } from "@/lib/format";
 
 export const Route = createFileRoute("/home")({
   head: () => ({ meta: [{ title: "ホーム — BASHI CUP 2026" }] }),
