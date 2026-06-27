@@ -140,6 +140,53 @@ function MatchDetailPage() {
           </p>
         </div>
 
+        {/* 試合終了後: 結果と自分の予想の的中/ハズレ表示 */}
+        {match.status === "finished" && (
+          <section className="mt-4 rounded-xl border border-border bg-background p-4">
+            <div className="flex items-center justify-center gap-3 text-2xl font-bold">
+              <span>{match.home_score ?? 0}</span>
+              <span className="text-xs text-muted-foreground">FINAL</span>
+              <span>{match.away_score ?? 0}</span>
+            </div>
+            <div className="mt-3 space-y-2 text-sm">
+              {matchBet && (
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">
+                    勝敗予想: {matchBet.pick === "HOME" ? match.home_team : match.away_team}
+                  </span>
+                  {matchBet.payout > 0 ? (
+                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      的中！ (+{matchBet.payout.toLocaleString()})
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                      ハズレ
+                    </span>
+                  )}
+                </div>
+              )}
+              {goalBets?.map((g) => (
+                <div key={g.id} className="flex items-center justify-between">
+                  <span className="text-muted-foreground">ゴール予想: {g.player_name}</span>
+                  {g.payout > 0 ? (
+                    <span className="rounded-full bg-primary/20 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      的中！ (+{g.payout.toLocaleString()})
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-destructive/20 px-2 py-0.5 text-[11px] font-semibold text-destructive">
+                      ハズレ
+                    </span>
+                  )}
+                </div>
+              ))}
+              {!matchBet && (!goalBets || goalBets.length === 0) && (
+                <p className="text-center text-xs text-muted-foreground">この試合への予想はありません</p>
+              )}
+            </div>
+          </section>
+        )}
+
+
         {/* 勝敗予想 */}
         <section className="mt-5">
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">勝敗予想</h2>
