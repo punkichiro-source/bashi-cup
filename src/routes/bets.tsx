@@ -15,8 +15,7 @@ function userName(row: any): string {
   return row?.users?.name ?? "不明";
 }
 
-function matchLabel(row: any): string {
-  const m = row?.matches;
+function matchLabel(m: any): string {
   if (!m) return "試合情報なし";
   return `${m.home_team} vs ${m.away_team}`;
 }
@@ -24,15 +23,14 @@ function matchLabel(row: any): string {
 function matchStatusBadge(status?: string): { label: string; cls: string } {
   switch (status) {
     case "finished":
-      return { label: "終了", cls: "bg-muted text-muted-foreground" };
+      return { label: "終了", cls: "bg-muted text-muted-foreground border border-border" };
     case "live":
-      return { label: "LIVE", cls: "bg-destructive/20 text-destructive" };
+      return { label: "LIVE", cls: "bg-destructive/10 text-destructive border border-destructive/20" };
     default:
-      return { label: "受付中", cls: "bg-primary/15 text-primary" };
+      return { label: "受付中", cls: "bg-primary/15 text-primary border border-primary/20" };
   }
 }
 
-// 試合終了後の的中/ハズレ結果バッジを返す（未確定なら null）
 function resultBadge(row: any): { label: string; cls: string } | null {
   const status = row?.matches?.status;
   if (status !== "finished") return null;
@@ -50,51 +48,42 @@ function Empty() {
   );
 }
 
-
 function BetCard({
   who,
   what,
   amount,
   when,
-  badge,
   side,
   result,
 }: {
   who: string;
-  what: string;
+  what?: string;
   amount: number;
   when?: string;
-  badge?: { label: string; cls: string };
   side?: string;
   result?: { label: string; cls: string } | null;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-card p-4">
+    <div className="rounded-xl border border-border/60 bg-card/60 p-3 space-y-1">
       <div className="flex items-center justify-between">
-        <p className="font-display text-base text-primary">{who}</p>
-        <span className="text-sm font-semibold text-primary">{formatBashi(amount)}</span>
+        <p className="font-display text-sm font-semibold text-foreground">{who}</p>
+        <span className="text-xs font-bold text-primary">{formatBashi(amount)}</span>
       </div>
-      <div className="mt-1 flex items-center justify-between gap-2">
-        <p className="text-sm text-foreground">{what}</p>
+      
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <p className="text-muted-foreground">{what || side}</p>
         {result && (
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${result.cls}`}>
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${result.cls}`}>
             {result.label}
           </span>
         )}
       </div>
-      <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
-        <span>{when ? formatDateTime(when) : ""}</span>
-        <div className="flex items-center gap-2">
-          {side && (
-            <span className="rounded-full bg-secondary px-2 py-0.5 font-medium text-secondary-foreground">
-              {side}
-            </span>
-          )}
-          {badge && (
-            <span className={`rounded-full px-2 py-0.5 font-medium ${badge.cls}`}>{badge.label}</span>
-          )}
-        </div>
-      </div>
+      
+      {when && (
+        <p className="text-[10px] text-muted-foreground/70 text-right">
+          {formatDateTime(when)}
+        </p>
+      )}
     </div>
   );
 }
@@ -110,10 +99,32 @@ function BetsPage() {
   const goalBets = data?.goalBets ?? [];
   const championBets = data?.championBets ?? [];
 
+  // 【新ロジック】勝敗予想を試合（match_id）ごとにグループ化
+  const groupedMatchBets = matchBets.reduce((acc: any, bet: any) => {
+    const m = bet.matches;
+    if (!m) return acc;
+    if (!acc[m.id]) {
+      acc[m.id] = { match: m, bets: [] };
+    }
+    acc[m.id].bets.push(bet);
+    return acc;
+  }, {});
+
+  // 【新ロジック】ゴール予想を試合（match_id）ごとにグループ化
+  const groupedGoalBets = goalBets.reduce((acc: any, bet: any) => {
+    const m = bet.matches;
+    if (!m) return acc;
+    if (!acc[m.id]) {
+      acc[m.id] = { match: m, bets: [] };
+    }
+    acc[m.id].bets.push(bet);
+    return acc;
+  }, {});
+
   return (
     <AppShell title="みんなの予想">
       <p className="mb-4 text-xs text-muted-foreground">
-        参加者全員の予想を一覧で確認できます。
+        参加者全員の予想を試合ごとに確認できます。
       </p>
       {isLoading ? (
         <p className="text-sm text-muted-foreground">読み込み中...</p>
@@ -125,56 +136,97 @@ function BetsPage() {
             <TabsTrigger value="champion">優勝</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="match" className="space-y-2">
-            {matchBets.length === 0 ? (
+          {/* ① 勝敗予想（試合単位） */}
+          <TabsContent value="match" className="space-y-4 mt-3">
+            {Object.keys(groupedMatchBets).length === 0 ? (
               <Empty />
             ) : (
-              matchBets.map((b: any) => (
-                <BetCard
-                  key={b.id}
-                  who={userName(b)}
-                  what={matchLabel(b)}
-                  amount={b.amount}
-                  when={b.created_at}
-                  side={b.pick === "HOME" ? "ホーム勝利" : "アウェイ勝利"}
-                  badge={matchStatusBadge(b.matches?.status)}
-                  result={resultBadge(b)}
-                />
-              ))
+              Object.values(groupedMatchBets).map((group: any) => {
+                const badge = matchStatusBadge(group.match.status);
+                return (
+                  <div key={group.match.id} className="border border-border rounded-xl p-3 bg-muted/10 space-y-3">
+                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                      <h3 className="font-display text-sm font-bold text-foreground">
+                        {matchLabel(group.match)}
+                      </h3>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {group.bets.map((b: any) => (
+                        <BetCard
+                          key={b.id}
+                          who={userName(b)}
+                          what={b.pick === "HOME" ? "🏠 ホーム勝利" : "🚌 アウェイ勝利"}
+                          amount={b.amount}
+                          when={b.created_at}
+                          result={resultBadge(b)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </TabsContent>
 
-          <TabsContent value="goal" className="space-y-2">
-            {goalBets.length === 0 ? (
+          {/* ② ゴール予想（試合単位） */}
+          <TabsContent value="goal" className="space-y-4 mt-3">
+            {Object.keys(groupedGoalBets).length === 0 ? (
               <Empty />
             ) : (
-              goalBets.map((b: any) => (
-                <BetCard
-                  key={b.id}
-                  who={userName(b)}
-                  what={`${matchLabel(b)}｜得点者: ${b.player_name}`}
-                  amount={b.amount}
-                  when={b.created_at}
-                  badge={matchStatusBadge(b.matches?.status)}
-                  result={resultBadge(b)}
-                />
-              ))
+              Object.values(groupedGoalBets).map((group: any) => {
+                const badge = matchStatusBadge(group.match.status);
+                return (
+                  <div key={group.match.id} className="border border-border rounded-xl p-3 bg-muted/10 space-y-3">
+                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
+                      <h3 className="font-display text-sm font-bold text-foreground">
+                        {matchLabel(group.match)}
+                      </h3>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                        {badge.label}
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {group.bets.map((b: any) => (
+                        <BetCard
+                          key={b.id}
+                          who={userName(b)}
+                          what={`⚽ 得点者: ${b.player_name}`}
+                          amount={b.amount}
+                          when={b.created_at}
+                          result={resultBadge(b)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </TabsContent>
 
-          <TabsContent value="champion" className="space-y-2">
+          {/* ③ 優勝国予想（全体リスト） */}
+          <TabsContent value="champion" className="space-y-2 mt-3">
             {championBets.length === 0 ? (
               <Empty />
             ) : (
               championBets.map((b: any) => (
-                <BetCard
-                  key={b.id}
-                  who={userName(b)}
-                  what={`優勝予想: ${b.team}`}
-                  amount={b.amount}
-                  when={b.created_at}
-                  side={`第${b.rank}候補`}
-                />
+                <div key={b.id} className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-display text-base text-primary">{userName(b)}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      👑 優勝国: <span className="text-foreground font-semibold">{b.team}</span>
+                    </p>
+                    <span className="inline-block mt-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
+                      第{b.rank}候補
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm font-bold text-primary">{formatBashi(b.amount)}</span>
+                    <p className="text-[9px] text-muted-foreground/70 mt-1">{formatDateTime(b.created_at)}</p>
+                  </div>
+                </div>
               ))
             )}
           </TabsContent>
