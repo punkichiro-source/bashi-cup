@@ -131,13 +131,15 @@ function MatchDetailPage() {
 
       await saveGoalBets(activeUserId, match, validGoalBets);
     },
-    onSuccess: () => {
-      // プロジェクト全体の全キャッシュ（ヘッダーの残高・スコア一覧等）を一斉強制リフレッシュ
-      queryClient.invalidateQueries();
-      queryClient.invalidateQueries({ queryKey: ["balance"] });
-      queryClient.invalidateQueries({ queryKey: ["user"] });
+    onSuccess: async () => {
+      // 全体の更新に加え、ヘッダーの残高コンポーネントを狙い撃ちして即時リフレッシュ
+      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["balance"] });
+      await queryClient.invalidateQueries({ queryKey: ["user"] });
+      await queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
+      await queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
       
-      alert("予想をすべて保存しました！");
+      alert("予想をすべて保存しました！残高が更新されました。");
     },
     onError: (err: any) => {
       alert("保存に失敗しました:\n" + (err.message || "エラーが発生しました"));
