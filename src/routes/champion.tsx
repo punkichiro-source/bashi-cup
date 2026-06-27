@@ -34,13 +34,29 @@ function ChampionPage() {
     queryFn: isTournamentStarted,
   });
 
+  // 【修正ポイント】matches から純粋な確定32ヵ国だけをフィルタリングして抽出
   const teams = useMemo(() => {
     const set = new Set<string>();
     (matches ?? []).forEach((m) => {
-      set.add(m.home_team);
-      set.add(m.away_team);
+      if (m.home_team) set.add(m.home_team);
+      if (m.away_team) set.add(m.away_team);
     });
-    return [...set].sort();
+
+    return [...set]
+      .filter((team) => {
+        // トーナメント用のプレースホルダー文字列（仮テキスト）をすべて除外する
+        return (
+          team &&
+          !team.includes("の勝者") &&
+          !team.includes("勝者") &&
+          !team.includes("グループ") &&
+          !team.includes("Winner") &&
+          !team.includes("Finalist") &&
+          !team.includes("ベスト16") &&
+          !team.includes("準々決勝")
+        );
+      })
+      .sort();
   }, [matches]);
 
   const [rows, setRows] = useState<Row[]>([
@@ -102,8 +118,7 @@ function ChampionPage() {
           <div key={i} className="rounded-xl border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
               <p className="font-display text-lg text-primary">第{i + 1}候補</p>
-              {/* ★ 正しい倍率表記（x5倍, x3倍, x2倍）を綺麗に見せるバッジデザイン */}
-              <span className="text-[11px] bg-amber-500/10 text-amber-600 font-bold px-2 py-0.5 rounded border border-amber-500/20表">
+              <span className="text-[11px] bg-amber-500/10 text-amber-600 font-bold px-2 py-0.5 rounded border border-amber-500/20">
                 的中配当: {CHAMPION_ODDS[i]}
               </span>
             </div>
