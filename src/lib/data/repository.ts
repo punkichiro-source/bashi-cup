@@ -208,4 +208,37 @@ export async function saveChampionBets(
     });
     if (error) throw error;
   }
+}// ---- 選手一覧をDBから取得（選択式用） ----
+export async function listPlayers(): Promise<{ id: string; name: string; team: string }[]> {
+  const { data, error } = await supabase
+    .from("players")
+    .select("id, name, team")
+    .order("name");
+  if (error) throw error;
+  return data || [];
+}
+
+// ---- 管理者用：試合結果と得点者を保存する ----
+export async function updateMatchResult(
+  matchId: string,
+  updates: {
+    home_score: number;
+    away_score: number;
+    status: "scheduled" | "live" | "finished";
+    winner: "HOME" | "AWAY" | null;
+    scorers: string[]; // 選択された得点者（名前の配列）
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from("matches")
+    .update({
+      home_score: updates.home_score,
+      away_score: updates.away_score,
+      status: updates.status,
+      winner: updates.winner,
+      scorers: updates.scorers,
+    })
+    .eq("id", matchId);
+
+  if (error) throw error;
 }
