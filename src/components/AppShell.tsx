@@ -1,9 +1,10 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Home, ListChecks, Trophy, Crown, Users, Shield, LogOut, RefreshCw } from "lucide-react";
 import { useSession } from "@/lib/auth/session";
 import { formatBashi } from "@/lib/format";
+import { supabase } from "@/integrations/supabase/client";
 
 const NAV = [
   { to: "/home", label: "ホーム", icon: Home },
@@ -19,25 +20,46 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
   const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   
-  // 更新ボタンのアニメーション用状態
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // ★ 判明したテーブル構造に基づき、users テーブルの balance を直接生フェッチするクエリ
+  const { data: latestBalance, refetch: refetchBalance } = useQuery({
+    queryKey: ["headerBalance", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      
+      const { data, error } = await supabase
+        .from("users") // ご提示いただいた正確なテーブル名
+        .select("balance") // ご提示いただいた正確なカラム名
+        .eq("id", user.id)
+        .single();
+        
+      if (error) {
+        console.error("残高取得エラー:", error);
+        throw error;
+      }
+      return data?.balance ?? 0;
+    },
+    enabled: !!user?.id,
+    initialData: user?.balance ?? 0 // 読み込み中のフォールバック
+  });
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/" });
   }, [loading, user, navigate]);
 
-  // 残高の強制同期を処理する関数
   const handleRefreshBalance = async () => {
     setIsRefreshing(true);
     try {
-      // ユーザーのセッション情報や残高に関わる全キャッシュを強制的に無効化して再取得させる
-      await queryClient.invalidateQueries();
+      // リアルタイムクエリを直接叩き直してDBの最新値を強制的に再反映
+      await refetchBalance();
+      // 他のコンポーネントが依存している可能性のあるキーも同時にリフレッシュ
+      await queryClient.invalidateQueries({ queryKey: ["headerBalance"] });
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
-      await queryClient.invalidateQueries({ queryKey: ["user"] });
     } catch (e) {
       console.error("残高の更新に失敗しました", e);
     } finally {
-      // くるくる回転する見た目を少しキープしてから解除
+      // くるくるを少し体感させてから終了
       setTimeout(() => setIsRefreshing(false), 600);
     }
   };
@@ -62,7 +84,6 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
           </div>
           
           <div className="flex items-center gap-3">
-            {/* 残高表示エリアと更新ボタンの統合 */}
             <div className="flex items-center gap-2 bg-muted/30 pl-2.5 pr-3 py-1 rounded-lg border border-border/40">
               {/* 🔄 手動更新ボタン */}
               <button
@@ -77,7 +98,8 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
               </button>
 
               <div className="text-right">
-                <p className="text-sm font-semibold text-primary">{formatBashi(user.balance)}</p>
+                {/* ★ 常にDB直結の最新残高をフォーマットして表示 */}
+                <p className="text-sm font-semibold text-primary">{formatBashi(latestBalance)}</p>
                 <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-medium">残高</p>
               </div>
             </div>
