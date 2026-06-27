@@ -202,20 +202,32 @@ export async function saveChampionBets(
     await applyBalanceChange(userId, -b.amount, "bet", `優勝予想 第${b.rank}候補: ${b.team}`);
     const { error } = await supabase.from("champion_bets").insert({
       user_id: userId,
+      match_id: null,
       rank: b.rank,
       team: b.team,
       amount: b.amount,
     });
     if (error) throw error;
   }
-}// ---- 選手一覧をDBから取得（選択式用） ----
+}
+
+// ---- 選手一覧をDBから安全に取得（エラー完全防御・トグル選択式用） ----
 export async function listPlayers(): Promise<{ id: string; name: string; team: string }[]> {
-  const { data, error } = await supabase
-    .from("players")
-    .select("id, name, team")
-    .order("name");
-  if (error) throw error;
-  return data || [];
+  try {
+    const { data, error } = await supabase
+      .from("players")
+      .select("id, name, team")
+      .order("name");
+    
+    if (error) {
+      console.error("playersテーブル読み込み時のエラーを検出しました:", error);
+      return [];
+    }
+    return data || [];
+  } catch (e) {
+    console.error("listPlayersメソッドのフェイルセーフが作動しました:", e);
+    return [];
+  }
 }
 
 // ---- 管理者用：試合結果と得点者を保存する ----
