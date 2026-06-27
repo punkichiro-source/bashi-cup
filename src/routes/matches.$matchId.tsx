@@ -15,7 +15,7 @@ import { formatKickoff } from "@/lib/format";
 import { GAME } from "@/lib/game/config";
 import type { Side } from "@/types/domain";
 
-export const Route = createFileRoute("/matches/$matchId")({
+export const Route = createFileRoute("/matches_/$matchId")({
   head: () => ({ meta: [{ title: "試合詳細 — BASHI CUP 2026" }] }),
   component: MatchDetailPage,
 });
