@@ -133,12 +133,8 @@ function MatchDetailPage() {
       await saveGoalBets(activeUserId, match, validGoalBets);
     },
     onSuccess: () => {
-      // すべての関連キャッシュをクリアして一覧に即時反映
-      queryClient.invalidateQueries({ queryKey: ["match", matchId] });
-      queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
-      queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
-      queryClient.invalidateQueries({ queryKey: ["allUsersBets"] }); 
-      queryClient.invalidateQueries({ queryKey: ["matchBets"] });
+      // プロジェクト全体の全キャッシュ（ヘッダーの残高・スコア一覧等）を一斉強制リフレッシュ
+      queryClient.invalidateQueries();
       
       alert("予想をすべて保存しました！");
     },
