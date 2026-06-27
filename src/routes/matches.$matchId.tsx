@@ -1,4 +1,3 @@
-// src/routes/matches.$matchId.tsx
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
@@ -22,7 +21,7 @@ function MatchPage() {
     <AppShell title={`${match.home_team} vs ${match.away_team}`}>
       <div className="p-4">
         <h1 className="text-xl font-bold">{match.home_team} vs {match.away_team}</h1>
-        {/* ここに詳細フォームロジックを配置 */}
+        {/* 詳細情報の表示ロジックはここに続きます */}
       </div>
     </AppShell>
   );
