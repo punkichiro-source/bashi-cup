@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
-import { listMatches } from "@/lib/data/repository";
+import { listMatches, listPlayers } from "@/lib/data/repository";
+import { supabase } from "@/integrations/supabase/client";
 import {
   manualUpdateMatch,
   reSettleMatch,
@@ -26,7 +27,23 @@ function AdminPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [champ, setChamp] = useState("");
 
+  // 各試合ごとのチェックされた得点者(選手名)を管理するオブジェクトステート
+  const [matchScorers, setMatchScorers] = useState<Record<string, string[]>>({});
+
+  // 試合一覧と事前登録された選手一覧をDBから取得
   const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: listMatches });
+  const { data: players = [] } = useQuery({ queryKey: ["players"], queryFn: listPlayers });
+
+  // 試合データが読み込まれたら、既存の登録済み得点者を初期値としてセット
+  useEffect(() => {
+    if (matches) {
+      const initialScorers: Record<string, string[]> = {};
+      matches.forEach((m) => {
+        initialScorers[m.id] = m.scorers || [];
+      });
+      setMatchScorers(initialScorers);
+    }
+  }, [matches]);
 
   // 管理者名を「Endy」または「ENDY」または既存のis_adminフラグで判定
   const isEndyAdmin = user && (user.is_admin || user.username?.toUpperCase() === "ENDY" || user.id === "endy");
@@ -50,6 +67,19 @@ function AdminPage() {
       setBusy(null);
     }
   }
+
+  // チェックボックスのトグル処理
+  const toggleScorer = (matchId: string, playerName: string) => {
+    const current = matchScorers[matchId] || [];
+    const next = current.includes(playerName)
+      ? current.filter((name) => name !== playerName)
+      : [...current, playerName];
+    
+    setMatchScorers({
+      ...matchScorers,
+      [matchId]: next,
+    });
+  };
 
   const teams = [...new Set((matches ?? []).flatMap((m) => [m.home_team, m.away_team]))].sort();
 
@@ -97,46 +127,108 @@ function AdminPage() {
 
       <section className="mt-6 space-y-2">
         <h2 className="text-sm font-medium text-muted-foreground">手動スコア更新 (メイン運用枠)</h2>
-        <p className="text-[11px] text-muted-foreground">ここでスコアを入力して「更新・精算」を押すと、ユーザーの予想への配当支払いまで同時に完了します。</p>
-        <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-          {matches?.map((m) => (
-            <div key={m.id} className="flex items-center justify-between rounded-xl border border-border bg-card px-3 py-2.5 gap-2">
-              <div className="flex flex-col min-w-0 flex-1">
-                <span className="text-[10px] text-muted-foreground font-mono truncate">{m.stage}</span>
-                <span className="text-sm truncate font-medium">{m.home_team} vs {m.away_team}</span>
+        <p className="text-[11px] text-muted-foreground">ここでスコアと得点者を入力して「更新・精算」を押すと、ユーザーの予想への配当支払いまで同時に完了します。</p>
+        <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+          {matches?.map((m) => {
+            // この試合の対戦国に所属する登録選手だけを絞り込む
+            const matchPlayers = players.filter(
+              (p) => p.team === m.home_team || p.team === m.away_team
+            );
+            const currentSelected = matchScorers[m.id] || [];
+
+            return (
+              <div key={m.id} className="flex flex-col rounded-xl border border-border bg-card p-4 gap-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="text-[10px] text-muted-foreground font-mono truncate">{m.stage}</span>
+                    <span className="text-sm truncate font-medium">{m.home_team} vs {m.away_team}</span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <input 
+                      type="number" 
+                      defaultValue={m.home_score ?? 0} 
+                      className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
+                      id={`hs-${m.id}`}
+                    />
+                    <span className="text-muted-foreground font-bold">:</span>
+                    <input 
+                      type="number" 
+                      defaultValue={m.away_score ?? 0} 
+                      className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
+                      id={`as-${m.id}`}
+                    />
+                  </div>
+                  <button
+                    disabled={!!busy}
+                    className="rounded-xl bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground transition-colors disabled:opacity-40 shrink-0"
+                    onClick={async () => {
+                      const hVal = (document.getElementById(`hs-${m.id}`) as HTMLInputElement).value;
+                      const aVal = (document.getElementById(`as-${m.id}`) as HTMLInputElement).value;
+                      const h = parseInt(hVal === "" ? "0" : hVal);
+                      const a = parseInt(aVal === "" ? "0" : aVal);
+                      const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
+                      
+                      await run("manual" + m.id, async () => {
+                        // 1. 既存の精算サービスをそのまま安全に呼び出して勝敗などの精算を行う
+                        await manualUpdateMatch(m.id, h, a, winner);
+                        // 2. 得点者リスト(scorers)を、選ばれた選手配列で確実に上書き更新する
+                        const { error } = await supabase
+                          .from("matches")
+                          .update({ scorers: currentSelected })
+                          .eq("id", m.id);
+                        if (error) throw error;
+                      }, () => "手動でスコア更新、得点者登録、および精算を完了しました");
+                    }}
+                  >
+                    更新・精算
+                  </button>
+                </div>
+
+                {/* 💡 得点者の選択エリア */}
+                <div className="border-t border-border/40 pt-2">
+                  <span className="text-[11px] font-medium text-muted-foreground block mb-1.5">
+                    得点者を選択してください (複数選択・同一人物の複数クリック可):
+                  </span>
+                  {matchPlayers.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5 max-h-[100px] overflow-y-auto bg-background/50 p-2 rounded-lg border border-border/50">
+                      {matchPlayers.map((player) => {
+                        const isChecked = currentSelected.includes(player.name);
+                        return (
+                          <button
+                            key={player.id}
+                            type="button"
+                            onClick={() => toggleScorer(m.id, player.name)}
+                            className={`px-2 py-1 text-xs rounded-md border transition-all ${
+                              isChecked
+                                ? "bg-primary/10 border-primary text-primary font-medium"
+                                : "bg-background border-border text-muted-foreground hover:border-muted"
+                            }`}
+                          >
+                            {player.name}
+                            <span className="text-[9px] opacity-70 ml-1">({player.team === m.home_team ? "H" : "A"})</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-yellow-500/80 pl-1">
+                      ※この対戦国の選手データが `players` テーブルに登録されていません。
+                    </p>
+                  )}
+                  {currentSelected.length > 0 && (
+                    <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+                      <span className="text-[10px] font-bold text-primary">決定済みの得点者:</span>
+                      {currentSelected.map((name, idx) => (
+                        <span key={idx} className="bg-muted px-1.5 py-0.5 rounded text-[10px] border border-border">
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <input 
-                  type="number" 
-                  defaultValue={m.home_score ?? 0} 
-                  className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
-                  id={`hs-${m.id}`}
-                />
-                <span className="text-muted-foreground font-bold">:</span>
-                <input 
-                  type="number" 
-                  defaultValue={m.away_score ?? 0} 
-                  className="w-12 rounded-lg border border-border bg-background p-1 text-center text-sm outline-none focus:border-primary"
-                  id={`as-${m.id}`}
-                />
-              </div>
-              <button
-                disabled={!!busy}
-                className="rounded-xl border border-primary px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/5 disabled:opacity-40 shrink-0"
-                onClick={async () => {
-                  const hVal = (document.getElementById(`hs-${m.id}`) as HTMLInputElement).value;
-                  const aVal = (document.getElementById(`as-${m.id}`) as HTMLInputElement).value;
-                  const h = parseInt(hVal === "" ? "0" : hVal);
-                  const a = parseInt(aVal === "" ? "0" : aVal);
-                  const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
-                  
-                  await run("manual" + m.id, () => manualUpdateMatch(m.id, h, a, winner), () => "手動でスコア更新と精算を完了しました");
-                }}
-              >
-                更新・精算
-              </button>
-            </div>
-          ))}
+            );
+          })}
           {(!matches || matches.length === 0) && (
             <p className="rounded-xl border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
               試合データがありません。Supabaseから再投入してください。
