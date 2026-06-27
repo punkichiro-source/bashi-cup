@@ -28,16 +28,23 @@ function MatchDetailPage() {
   const [pick, setPick] = useState<Side>("HOME");
   const [matchAmount, setMatchAmount] = useState<string>("");
   
-  // 複数名選択のための配列型状態: [{ player_name: string, amount: string }]
+  // 複数名選択のための配列型状態
   const [goalBets, setGoalBets] = useState<{ player_name: string; amount: string }[]>([
     { player_name: "", amount: "" }
   ]);
 
-  // ユーザーIDの取得
+  // ユーザーIDの取得を強化（セッション変更も監視）
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      if (data?.user) setUserId(data.user.id);
-    });
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        console.log("ログイン中のユーザーIDを取得しました:", user.id);
+        setUserId(user.id);
+      } else {
+        console.warn("ユーザーがログインしていません。Authセッションを確認してください。");
+      }
+    };
+    checkUser();
   }, []);
 
   // 1. 試合データの取得
@@ -90,58 +97,76 @@ function MatchDetailPage() {
     ? allPlayers.filter(p => p.team === match.home_team || p.team === match.away_team)
     : [];
 
-  // ホーム選手とアウェイ選手に分ける
   const homePlayers = matchPlayers.filter(p => p.team === match?.home_team);
   const awayPlayers = matchPlayers.filter(p => p.team === match?.away_team);
 
-  // 得点者予想の行を追加
-  const addScorerRow = () => {
-    setGoalBets([...goalBets, { player_name: "", amount: "" }]);
-  };
-
-  // 得点者予想の行を削除
+  // 行操作ロジック
+  const addScorerRow = () => setGoalBets([...goalBets, { player_name: "", amount: "" }]);
   const removeScorerRow = (index: number) => {
     const updated = [...goalBets];
     updated.splice(index, 1);
     setGoalBets(updated.length === 0 ? [{ player_name: "", amount: "" }] : updated);
   };
-
-  // 得点者予想の特定行の値を更新
   const updateScorerRow = (index: number, field: "player_name" | "amount", value: string) => {
     const updated = [...goalBets];
     updated[index][field] = value;
     setGoalBets(updated);
   };
 
-  // 予想保存ミューテーション
+  // 予想保存ミューテーション（ログ出力を大幅強化）
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!userId || !match) return;
-
-      // 1. 勝敗予想の保存 (金額がある場合のみ)
-      if (matchAmount) {
-        await saveMatchBet(userId, match, pick, Number(matchAmount));
+      if (!userId) {
+        throw new Error("ユーザーIDが取得できていません。ログイン状態を確認してください。");
+      }
+      if (!match) {
+        throw new Error("試合データが読み込まれていません。");
       }
 
-      // 2. ゴール予想の保存 (選手名と金額が有効なもののみフィルタリングして一括保存)
+      console.log("=== 予想保存処理を開始します ===");
+      console.log("ユーザーID:", userId);
+      console.log("試合ID:", match.id);
+
+      // 1. 勝敗予想の保存
+      const parsedMatchAmount = Number(matchAmount);
+      if (matchAmount && !isNaN(parsedMatchAmount) && parsedMatchAmount > 0) {
+        console.log(`勝敗予想を保存中... 投票先: ${pick}, 金額: ${parsedMatchAmount}`);
+        await saveMatchBet(userId, match, pick, parsedMatchAmount);
+        console.log("勝敗予想の保存に成功しました");
+      } else {
+        console.log("有効な勝敗予想の金額が入力されていないため、勝敗の保存はスキップします。");
+      }
+
+      // 2. ゴール予想の保存
       const validGoalBets = goalBets
-        .filter(b => b.player_name && Number(b.amount) > 0)
+        .filter(b => b.player_name.trim() !== "" && !isNaN(Number(b.amount)) && Number(b.amount) > 0)
         .map(b => ({
           player_name: b.player_name,
           amount: Number(b.amount)
         }));
 
-      // リポジトリの saveGoalBets に有効な配列を渡す
-      await saveGoalBets(userId, match, validGoalBets);
+      if (validGoalBets.length > 0) {
+        console.log("ゴール予想を一括保存中...", validGoalBets);
+        await saveGoalBets(userId, match, validGoalBets);
+        console.log("ゴール予想の保存に成功しました");
+      } else {
+        console.log("有効なゴール予想（選手名と金額）がないため、ゴールの保存はスキップします。");
+      }
+      
+      console.log("=== 全ての保存処理が完了しました ===");
     },
     onSuccess: () => {
+      // 関連するすべてのキャッシュを強制リフレッシュ
       queryClient.invalidateQueries({ queryKey: ["match", matchId] });
       queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
       queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
+      queryClient.invalidateQueries({ queryKey: ["allUsersBets"] }); // みんなの予想一覧のキャッシュもクリア
+      
       alert("予想をすべて保存しました！");
     },
     onError: (err: any) => {
-      alert("保存に失敗しました: " + (err.message || "エラーが発生しました"));
+      console.error("保存処理中にエラーが発生しました:", err);
+      alert("保存に失敗しました:\n" + (err.message || "エラーの詳細をコンソルで確認してください"));
     },
   });
 
@@ -207,7 +232,6 @@ function MatchDetailPage() {
               <div className="space-y-3">
                 {goalBets.map((row, index) => (
                   <div key={index} className="flex gap-2 items-end border-b border-border/50 pb-3 last:border-0 last:pb-0">
-                    {/* 選手選択ドロップダウン (該当2カ国の選手のみ) */}
                     <div className="flex-1 space-y-1">
                       <label className="text-[11px] text-muted-foreground block">選手 {index + 1}</label>
                       <select
@@ -229,7 +253,6 @@ function MatchDetailPage() {
                       </select>
                     </div>
 
-                    {/* 純粋な数値入力の金額欄 */}
                     <div className="w-32 space-y-1">
                       <label className="text-[11px] text-muted-foreground block">賭けるBASHI</label>
                       <Input
@@ -240,7 +263,6 @@ function MatchDetailPage() {
                       />
                     </div>
 
-                    {/* 行削除ボタン */}
                     {goalBets.length > 1 && (
                       <Button
                         type="button"
@@ -255,7 +277,6 @@ function MatchDetailPage() {
                 ))}
               </div>
 
-              {/* 予想追加ボタン */}
               <Button
                 type="button"
                 variant="outline"
