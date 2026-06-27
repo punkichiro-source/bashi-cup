@@ -138,6 +138,7 @@ function BetsPage() {
                   when={b.created_at}
                   side={b.pick === "HOME" ? "ホーム勝利" : "アウェイ勝利"}
                   badge={matchStatusBadge(b.matches?.status)}
+                  result={resultBadge(b)}
                 />
               ))
             )}
