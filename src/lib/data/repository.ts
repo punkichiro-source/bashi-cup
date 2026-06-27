@@ -267,3 +267,73 @@ export async function updateMatchResult(
 
   if (error) throw error;
 }
+// =========================================================================
+// ---- みんなの予想一覧取得用（ダッシュボード・全件表示用） ----
+// =========================================================================
+
+export interface AllUsersBets {
+  matchBets: any[];
+  goalBets: any[];
+  championBets: any[];
+}
+
+export async function listAllUsersBets(): Promise<AllUsersBets> {
+  try {
+    // 1. 全員の「勝敗予想」を試合情報・ユーザー名付きで取得
+    const { data: matchBets, error: mErr } = await supabase
+      .from("match_bets")
+      .select(`
+        id,
+        amount,
+        pick,
+        created_at,
+        user_id,
+        users ( name ),
+        match_id,
+        matches ( home_team, away_team, status, kickoff_time )
+      `)
+      .order("created_at", { ascending: false });
+
+    // 2. 全員の「ゴール（得点者）予想」を取得
+    const { data: goalBets, error: gErr } = await supabase
+      .from("goal_bets")
+      .select(`
+        id,
+        amount,
+        player_name,
+        created_at,
+        user_id,
+        users ( name ),
+        match_id,
+        matches ( home_team, away_team, status )
+      `)
+      .order("created_at", { ascending: false });
+
+    // 3. 全員の「優勝予想」を取得
+    const { data: championBets, error: cErr } = await supabase
+      .from("champion_bets")
+      .select(`
+        id,
+        amount,
+        rank,
+        team,
+        created_at,
+        user_id,
+        users ( name )
+      `)
+      .order("amount", { ascending: false });
+
+    if (mErr) console.error("MatchBetsの取得失敗:", mErr);
+    if (gErr) console.error("GoalBetsの取得失敗:", gErr);
+    if (cErr) console.error("ChampionBetsの取得失敗:", cErr);
+
+    return {
+      matchBets: matchBets || [],
+      goalBets: goalBets || [],
+      championBets: championBets || [],
+    };
+  } catch (e) {
+    console.error("listAllUsersBetsで致命的なエラーが発生しました:", e);
+    return { matchBets: [], goalBets: [], championBets: [] };
+  }
+}
