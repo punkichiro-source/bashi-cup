@@ -1,6 +1,7 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
-import { Home, ListChecks, Trophy, Crown, Users, Shield, LogOut } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Home, ListChecks, Trophy, Crown, Users, Shield, LogOut, RefreshCw } from "lucide-react";
 import { useSession } from "@/lib/auth/session";
 import { formatBashi } from "@/lib/format";
 
@@ -15,11 +16,31 @@ const NAV = [
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
   const { user, loading, logout } = useSession();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  
+  // 更新ボタンのアニメーション用状態
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/" });
   }, [loading, user, navigate]);
+
+  // 残高の強制同期を処理する関数
+  const handleRefreshBalance = async () => {
+    setIsRefreshing(true);
+    try {
+      // ユーザーのセッション情報や残高に関わる全キャッシュを強制的に無効化して再取得させる
+      await queryClient.invalidateQueries();
+      await queryClient.invalidateQueries({ queryKey: ["balance"] });
+      await queryClient.invalidateQueries({ queryKey: ["user"] });
+    } catch (e) {
+      console.error("残高の更新に失敗しました", e);
+    } finally {
+      // くるくる回転する見た目を少しキープしてから解除
+      setTimeout(() => setIsRefreshing(false), 600);
+    }
+  };
 
   if (loading || !user) {
     return (
@@ -39,11 +60,28 @@ export function AppShell({ children, title }: { children: ReactNode; title?: str
             </p>
             <p className="mt-1 text-xs text-muted-foreground">{user.name}</p>
           </div>
+          
           <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-primary">{formatBashi(user.balance)}</p>
-              <p className="text-[10px] uppercase tracking-widest text-muted-foreground">残高</p>
+            {/* 残高表示エリアと更新ボタンの統合 */}
+            <div className="flex items-center gap-2 bg-muted/30 pl-2.5 pr-3 py-1 rounded-lg border border-border/40">
+              {/* 🔄 手動更新ボタン */}
+              <button
+                onClick={handleRefreshBalance}
+                disabled={isRefreshing}
+                className={`text-muted-foreground hover:text-primary p-1 rounded transition-all ${
+                  isRefreshing ? "animate-spin text-primary" : ""
+                }`}
+                title="残高を同期"
+              >
+                <RefreshCw className="h-3 w-3" />
+              </button>
+
+              <div className="text-right">
+                <p className="text-sm font-semibold text-primary">{formatBashi(user.balance)}</p>
+                <p className="text-[9px] uppercase tracking-widest text-muted-foreground font-medium">残高</p>
+              </div>
             </div>
+
             <button
               onClick={() => {
                 logout();
