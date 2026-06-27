@@ -1,9 +1,7 @@
-// 精算（配当）ロジック。配当倍率はここで一元管理する。
 import { supabase } from "@/integrations/supabase/client";
 import { applyBalanceChange, getMatch } from "@/lib/data/repository";
 import type { GoalBet, MatchBet } from "@/types/domain";
 
-// ---- 配当倍率定数 ----
 export const PAYOUT = {
   MATCH_WIN: 5,
   SCORER_SINGLE: 5,
@@ -12,22 +10,19 @@ export const PAYOUT = {
   CHAMPION_RANK_3: 5,
 } as const;
 
+export type PayoutConfig = typeof PAYOUT;
+
 export interface MatchResult {
   home_score: number;
   away_score: number;
-  winner: string; // "HOME" | "AWAY" | チーム名 | "draw"
+  winner: string;
   scorers: string[];
 }
 
-/**
- * 試合結果を反映し、的中判定・配当計算・残高更新を行う。
- * 精算完了時に match.status = 'finished'、match.settled = true となる。
- */
 export async function processPayout(matchId: string, result: MatchResult): Promise<void> {
   const match = await getMatch(matchId);
   const label = `${match.home_team} vs ${match.away_team}`;
 
-  // winner を HOME / AWAY の側に正規化する
   let side: "HOME" | "AWAY" | null = null;
   if (result.winner === "HOME" || result.winner === "AWAY") {
     side = result.winner;
@@ -37,7 +32,6 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     side = "AWAY";
   }
 
-  // 1. 試合データを更新（status を finished に）
   const { error: upErr } = await supabase
     .from("matches")
     .update({
@@ -50,7 +44,6 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     .eq("id", matchId);
   if (upErr) throw upErr;
 
-  // 2. 勝敗予想の精算（未精算のみ）
   const { data: mb } = await supabase
     .from("match_bets")
     .select("*")
@@ -65,7 +58,6 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     }
   }
 
-  // 3. ゴール（得点者）予想の精算（未精算のみ）
   const { data: gb } = await supabase
     .from("goal_bets")
     .select("*")
@@ -80,6 +72,5 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     }
   }
 
-  // 4. 試合を精算済みにする
   await supabase.from("matches").update({ settled: true }).eq("id", matchId);
 }
