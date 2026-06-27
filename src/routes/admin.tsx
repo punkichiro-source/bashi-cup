@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
 import { listMatches, listPlayers } from "@/lib/data/repository";
 import { supabase } from "@/integrations/supabase/client";
+import { processPayout } from "@/lib/data/payout";
 import {
   manualUpdateMatch,
   reSettleMatch,
