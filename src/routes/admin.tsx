@@ -18,7 +18,6 @@ function AdminPage() {
   const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   
-  // 各試合ごとの公式得点者（文字列の配列）を管理する状態
   const [matchScorers, setMatchScorers] = useState<Record<string, string[]>>({});
   
   const { data: matches } = useQuery({ queryKey: ["matches"], queryFn: listMatches });
@@ -50,7 +49,6 @@ function AdminPage() {
     }
   }
 
-  // 得点者を追加する処理
   const addScorer = (matchId: string, playerName: string) => {
     if (!playerName) return;
     setMatchScorers((prev) => ({
@@ -59,7 +57,6 @@ function AdminPage() {
     }));
   };
 
-  // 得点者を削除する処理
   const removeScorer = (matchId: string, indexToRemove: number) => {
     setMatchScorers((prev) => ({
       ...prev,
@@ -71,29 +68,76 @@ function AdminPage() {
 
   return (
     <AppShell title="管理画面">
-      <div className="space-y-6 max-w-2xl mx-auto p-2">
-        <h2 className="text-lg font-bold border-b pb-2">試合結果の入力と精算</h2>
+      <div className="space-y-6 max-w-2xl mx-auto p-2 mb-20">
+        <h2 className="text-lg font-bold border-b pb-2">試合結果の入力と管理</h2>
         
-        {matches?.map((m) => {
-          // 該当の試合に出場している両チームの選手のみに絞り込む
+        {matches?.map((m: any) => {
           const availablePlayers = players.filter(
             (p) => p.team === m.home_team || p.team === m.away_team
           );
           const currentScorers = matchScorers[m.id] || [];
 
           return (
-            <div key={m.id} className="p-5 border rounded-xl bg-card space-y-4 shadow-sm">
+            <div key={m.id} className="p-5 border rounded-xl bg-card space-y-4 shadow-sm relative">
+              
+              {/* ヘッダー情報 */}
               <div className="flex justify-between items-center">
-                <h3 className="font-bold text-sm">{m.home_team} vs {m.away_team}</h3>
-                <span className={`text-[11px] px-2 py-0.5 rounded-full ${m.settled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                  {m.settled ? "精算済み" : "未精算"}
+                <span className="text-xs font-bold bg-primary/10 text-primary px-2 py-0.5 rounded">
+                  {m.stage || "ベスト36"}
+                </span>
+                <span className={`text-[11px] px-2 py-0.5 rounded-full font-bold ${m.settled ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {m.settled ? "精算完了（確定済）" : "未精算"}
                 </span>
               </div>
 
+              {/* 【新機能】国名修正・変更フォーム */}
+              <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
+                <label className="text-[11px] font-bold text-muted-foreground block">🛠️ 国名の修正（未定枠の確定など）</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">HOMEチーム</span>
+                    <input 
+                      type="text" 
+                      id={`team-home-${m.id}`} 
+                      defaultValue={m.home_team} 
+                      className="w-full text-xs p-1.5 border rounded bg-background" 
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-muted-foreground block">AWAYチーム</span>
+                    <input 
+                      type="text" 
+                      id={`team-away-${m.id}`} 
+                      defaultValue={m.away_team} 
+                      className="w-full text-xs p-1.5 border rounded bg-background" 
+                    />
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  className="w-full py-1 text-[11px] bg-secondary border hover:bg-secondary/80 text-secondary-foreground rounded font-medium"
+                  onClick={async () => {
+                    const newHome = (document.getElementById(`team-home-${m.id}`) as HTMLInputElement).value.trim();
+                    const newAway = (document.getElementById(`team-away-${m.id}`) as HTMLInputElement).value.trim();
+                    
+                    await run(`name-${m.id}`, async () => {
+                      const { error } = await supabase
+                        .from("matches")
+                        .update({ home_team: newHome, away_team: newAway })
+                        .eq("id", m.id);
+                      if (error) throw error;
+                    }, () => "国名を更新しました！");
+                  }}
+                >
+                  国名の変更を保存する
+                </button>
+              </div>
+
               {/* スコア入力欄 */}
-              <div className="flex items-center gap-3 bg-muted/40 p-3 rounded-lg justify-center">
+              <div className="flex items-center gap-3 bg-muted/50 p-3 rounded-lg justify-center">
                 <div className="text-center">
-                  <span className="text-xs block mb-1 text-muted-foreground">{m.home_team}</span>
+                  <span className="text-xs block mb-1 font-semibold truncate max-w-[120px]">{m.home_team || "未定"}</span>
                   <input 
                     type="number" 
                     id={`hs-${m.id}`} 
@@ -103,7 +147,7 @@ function AdminPage() {
                 </div>
                 <div className="font-bold text-muted-foreground pt-4">ー</div>
                 <div className="text-center">
-                  <span className="text-xs block mb-1 text-muted-foreground">{m.away_team}</span>
+                  <span className="text-xs block mb-1 font-semibold truncate max-w-[120px]">{m.away_team || "未定"}</span>
                   <input 
                     type="number" 
                     id={`as-${m.id}`} 
@@ -113,11 +157,10 @@ function AdminPage() {
                 </div>
               </div>
 
-              {/* 得点者（スコアラー）の登録UI */}
+              {/* 得点者登録UI */}
               <div className="space-y-2 border border-dashed p-3 rounded-lg">
                 <label className="text-xs font-semibold block text-primary">◆ 公式得点者の登録</label>
                 
-                {/* 登録された得点者バッジ一覧 */}
                 {currentScorers.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5 py-1">
                     {currentScorers.map((name, idx) => (
@@ -137,23 +180,22 @@ function AdminPage() {
                   <p className="text-[11px] text-muted-foreground italic">得点者が登録されていません</p>
                 )}
 
-                {/* 選手選択用セレクトボックス */}
                 <div className="flex gap-2 mt-2">
                   <select
                     id={`player-select-${m.id}`}
                     className="flex-1 h-8 text-xs rounded-md border border-input bg-background px-2"
                     onChange={(e) => {
                       addScorer(m.id, e.target.value);
-                      e.target.value = ""; // 選択後にリセット
+                      e.target.value = "";
                     }}
                   >
                     <option value="">+ ゴールを決めた選手を追加</option>
-                    <optgroup label={m.home_team}>
+                    <optgroup label={m.home_team || "HOME"}>
                       {availablePlayers.filter(p => p.team === m.home_team).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
-                    <optgroup label={m.away_team}>
+                    <optgroup label={m.away_team || "AWAY"}>
                       {availablePlayers.filter(p => p.team === m.away_team).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
@@ -162,53 +204,73 @@ function AdminPage() {
                 </div>
               </div>
 
-              {/* 精算実行ボタン */}
-              <button
-                className="w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl text-xs shadow-sm hover:opacity-90 transition-opacity"
-                disabled={busy !== null}
-                onClick={async () => {
-                  const h = parseInt((document.getElementById(`hs-${m.id}`) as HTMLInputElement).value);
-                  const a = parseInt((document.getElementById(`as-${m.id}`) as HTMLInputElement).value);
-                  const winnerside = h > a ? "HOME" : a > h ? "AWAY" : "draw";
-                  const currentScorersList = matchScorers[m.id] || [];
+              {/* 操作ボタンエリア */}
+              <div className="space-y-2 pt-2">
+                <button
+                  className="w-full py-2.5 bg-primary text-primary-foreground font-semibold rounded-xl text-xs shadow-sm hover:opacity-90 transition-opacity"
+                  disabled={busy !== null}
+                  onClick={async () => {
+                    const h = parseInt((document.getElementById(`hs-${m.id}`) as HTMLInputElement).value);
+                    const a = parseInt((document.getElementById(`as-${m.id}`) as HTMLInputElement).value);
+                    const winnerside = h > a ? "HOME" : a > h ? "AWAY" : "draw";
+                    const currentScorersList = matchScorers[m.id] || [];
 
-                  await run("p", async () => {
-                    // ① 試合テーブルの結果を手動で確定更新
-                    const { error: updateError } = await supabase
-                      .from("matches")
-                      .update({
-                        home_score: h,
-                        away_score: a,
-                        winner: winnerside,
-                        scorers: currentScorersList,
-                        status: "finished"
-                      })
-                      .eq("id", m.id);
+                    await run("p", async () => {
+                      return await processPayout(m.id, { 
+                        home_score: h, 
+                        away_score: a, 
+                        winner: winnerside, 
+                        scorers: currentScorersList 
+                      });
+                    }, () => "試合結果を確定し、配当・精算を完全に完了しました！");
+                  }}
+                >
+                  {busy === "p" ? "精算処理中..." : "試合結果を確定して精算を実行"}
+                </button>
 
-                    if (updateError) throw updateError;
+                {/* 【新機能】誤入力リセットボタン */}
+                {m.settled && (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    className="w-full py-2 bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 font-medium rounded-xl text-xs transition-colors"
+                    onClick={async () => {
+                      if (!confirm("本当にこの試合の精算を取り消しますか？ユーザーに配当された残高は自動的に回収・マイナスされます。")) return;
+                      
+                      await run(`reset-${m.id}`, async () => {
+                        // ① まず payout.ts 内に仕込んだ「マイナス相殺」ロジックを発動させるため、
+                        // 0スコアかつ誰も的中しないダミー状態で一度 processPayout を走らせて過去の配当を全回収します
+                        await processPayout(m.id, {
+                          home_score: 0,
+                          away_score: 0,
+                          winner: "draw",
+                          scorers: ["__NEVER_MATCH_RESET_KEY__"] // 誰も賭けていないダミー名
+                        });
 
-                    // ② processPayoutを実行（もし内部で同期サービスのsettleMatchを呼んでいる場合、
-                    // DBへの反映直後だとstatus !== "finished" と判定されて弾かれることがあるため、
-                    // 確実にfinished状態にしたオブジェクトを模して即時反映を促します）
-                    const result = await processPayout(m.id, { 
-                      home_score: h, 
-                      away_score: a, 
-                      winner: winnerside, 
-                      scorers: currentScorersList 
-                    });
-
-                    // ③ 精算漏れを防ぐため、アプリ全体の全キャッシュをこの瞬間に完全クリア
-                    qc.invalidateQueries();
-                    
-                    return result;
-                  }, () => "試合結果を確定し、配当計算・精算を完全に実行しました！");
-                }}
-              >
-                {busy === "p" ? "精算処理中..." : "試合結果を確定して精算を実行"}
-              </button>
-              
-              <div className="text-[10px] text-muted-foreground text-center">
-                勝敗的中:{PAYOUT.MATCH_WIN}倍 / ゴール的中:{PAYOUT.SCORER_SINGLE}倍
+                        // ② その後、ステータスを「未精算のスケジュール」に完全に巻き戻します
+                        const { error } = await supabase
+                          .from("matches")
+                          .update({
+                            home_score: null,
+                            away_score: null,
+                            winner: null,
+                            scorers: [],
+                            status: "scheduled",
+                            settled: false
+                          })
+                          .eq("id", m.id);
+                        
+                        if (error) throw error;
+                        
+                        // ③ 紐づくユーザーの投票データの精算状態も未精算(false)に戻す
+                        await supabase.from("match_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
+                        await supabase.from("goal_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
+                      }, () => "精算の取り消し・残高の回収が完了しました！未精算状態に戻っています。");
+                    }}
+                  >
+                    ⚠️ 誤入力を取り消して未精算リセット
+                  </button>
+                )}
               </div>
             </div>
           );
