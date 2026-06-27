@@ -298,11 +298,13 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         id,
         amount,
         pick,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name ),
         match_id,
-        matches ( home_team, away_team, status, kickoff_time )
+        matches ( home_team, away_team, status, winner, scorers, kickoff_time )
       `)
       .order("created_at", { ascending: false });
 
@@ -313,11 +315,13 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         id,
         amount,
         player_name,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name ),
         match_id,
-        matches ( home_team, away_team, status )
+        matches ( home_team, away_team, status, winner, scorers )
       `)
       .order("created_at", { ascending: false });
 
@@ -329,6 +333,8 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         amount,
         rank,
         team,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name )
