@@ -17,7 +17,7 @@ function userName(row: any): string {
 
 function matchLabel(m: any): string {
   if (!m) return "試合情報なし";
-  return `${m.home_team} vs ${m.away_team}`;
+  return `${m.home_team || "未定"} vs ${m.away_team || "未定"}`;
 }
 
 function matchStatusBadge(status?: string): { label: string; cls: string } {
@@ -53,7 +53,6 @@ function BetCard({
   what,
   amount,
   when,
-  side,
   result,
 }: {
   who: string;
@@ -71,7 +70,7 @@ function BetCard({
       </div>
       
       <div className="flex items-center justify-between gap-2 text-xs">
-        <p className="text-muted-foreground">{what || side}</p>
+        <p className="text-muted-foreground">{what}</p>
         {result && (
           <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${result.cls}`}>
             {result.label}
@@ -99,25 +98,29 @@ function BetsPage() {
   const goalBets = data?.goalBets ?? [];
   const championBets = data?.championBets ?? [];
 
-  // 【新ロジック】勝敗予想を試合（match_id）ごとにグループ化
+  // 【修正ポイント】確実な match_id (または m.id) を利用し、他試合が混ざるのを完全防止
   const groupedMatchBets = matchBets.reduce((acc: any, bet: any) => {
     const m = bet.matches;
-    if (!m) return acc;
-    if (!acc[m.id]) {
-      acc[m.id] = { match: m, bets: [] };
+    const mId = bet.match_id || m?.id;
+    if (!mId || !m) return acc; // 試合情報が完全に紐づいていない不正データはスキップ
+    
+    if (!acc[mId]) {
+      acc[mId] = { match: m, bets: [] };
     }
-    acc[m.id].bets.push(bet);
+    acc[mId].bets.push(bet);
     return acc;
   }, {});
 
-  // 【新ロジック】ゴール予想を試合（match_id）ごとにグループ化
+  // 【修正ポイント】ゴール予想も同様に独立した確実な ID をベースに仕分ける
   const groupedGoalBets = goalBets.reduce((acc: any, bet: any) => {
     const m = bet.matches;
-    if (!m) return acc;
-    if (!acc[m.id]) {
-      acc[m.id] = { match: m, bets: [] };
+    const mId = bet.match_id || m?.id;
+    if (!mId || !m) return acc;
+    
+    if (!acc[mId]) {
+      acc[mId] = { match: m, bets: [] };
     }
-    acc[m.id].bets.push(bet);
+    acc[mId].bets.push(bet);
     return acc;
   }, {});
 
@@ -158,7 +161,7 @@ function BetsPage() {
                         <BetCard
                           key={b.id}
                           who={userName(b)}
-                          what={b.pick === "HOME" ? "🏠 ホーム勝利" : "🚌 アウェイ勝利"}
+                          what={b.pick === "HOME" ? `🏠 ${group.match.home_team || "ホーム"} 勝利` : `🚌 ${group.match.away_team || "アウェイ"} 勝利`}
                           amount={b.amount}
                           when={b.created_at}
                           result={resultBadge(b)}
