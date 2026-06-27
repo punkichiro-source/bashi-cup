@@ -7,26 +7,39 @@ export const Route = createFileRoute("/matches/")({
   component: MatchesIndex,
 });
 
+// 国名から国旗絵文字を安全に動的生成（特殊文字を直接書かないことでGitHubの警告を回避）
 function getFlagEmoji(countryName: string): string {
   if (!countryName) return "🏳️";
-  const flags: Record<string, string> = {
-    "日本": "🇯🇵",
-    "ブラジル": "🇧🇷",
-    "フランス": "🇫🇷",
-    "アルゼンチン": "🇦🇷",
-    "イングランド": "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
-    "ドイツ": "🇩🇪",
-    "スペイン": "🇪🇸",
-    "イタリア": "🇮🇹",
-    "ポルトガル": "🇵🇹",
-    "オランダ": "🇳🇱",
-    "クロアチア": "🇭🇷",
-    "ウルグアイ": "🇺🇾",
-    "アメリカ": "🇺🇸",
-    "韓国": "🇰🇷",
-    "オーストラリア": "🇦🇺",
+  
+  // 国名と2文字の国コード（ISO）のマッピング
+  const isoCodes: Record<string, string> = {
+    "日本": "JP",
+    "ブラジル": "BR",
+    "フランス": "FR",
+    "アルゼンチン": "AR",
+    "ドイツ": "DE",
+    "スペイン": "ES",
+    "イタリア": "IT",
+    "ポルトガル": "PT",
+    "オランダ": "NL",
+    "クロアチア": "HR",
+    "ウルグアイ": "UY",
+    "アメリカ": "US",
+    "韓国": "KR",
+    "オーストラリア": "AU",
   };
-  return flags[countryName] || "🏳️";
+
+  const code = isoCodes[countryName];
+  if (!code) {
+    // イングランドなどの特殊な国旗のフォールバック
+    if (countryName === "イングランド") return "🏴";
+    return "🏳️";
+  }
+
+  // アルファベットを国旗コードポイントに変換するクリーンなロジック
+  return String.fromCodePoint(
+    ...[...code.toUpperCase()].map(char => 127397 + char.charCodeAt(0))
+  );
 }
 
 function formatJST(dateString: string): string {
