@@ -211,19 +211,22 @@ export async function saveChampionBets(
   }
 }
 
-// ---- 選手一覧をDBから安全に取得（エラー完全防御・トグル選択式用） ----
-export async function listPlayers(): Promise<{ id: string; name: string; team: string }[]> {
+// ---- 選手一覧をDBから安全に取得（ビュー連動・全件ソート取得版） ----
+export async function listPlayers(): Promise<{ id: string; name: string; team: string; display_name: string }[]> {
   try {
+    // 作成したSQLビュー「v_pulldown_players」からデータを引っ張ります
     const { data, error } = await supabase
-      .from("players")
-      .select("id, name, team")
-      .order("name");
+      .from("v_pulldown_players")
+      .select("id, name, team, display_name")
+      .range(0, 1500); // デフォルトの100件制限を無視して最大1500件（1249人全員）を取得
     
     if (error) {
-      console.error("playersテーブル読み込み時のエラーを検出しました:", error);
+      console.error("v_pulldown_playersビュー読み込み時のエラーを検出しました:", error);
       return [];
     }
-    return data || [];
+    
+    // DB側（VIEW）の設定に準拠し、国ごとに綺麗にまとまり、ポジション順・ID順になった配列がそのまま返ります
+    return (data || []) as { id: string; name: string; team: string; display_name: string }[];
   } catch (e) {
     console.error("listPlayersメソッドのフェイルセーフが作動しました:", e);
     return [];
