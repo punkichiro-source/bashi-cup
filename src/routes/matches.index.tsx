@@ -7,11 +7,9 @@ export const Route = createFileRoute("/matches/")({
   component: MatchesIndex,
 });
 
-// 国名から国旗絵文字を取得するマッピング関数
 function getFlagEmoji(countryName: string): string {
   if (!countryName) return "🏳️";
   const flags: Record<string, string> = {
-    // 必要に応じて主要な出場国の国名（DBに入っている文字列）を自由に追加してください
     "日本": "🇯🇵",
     "ブラジル": "🇧🇷",
     "フランス": "🇫🇷",
@@ -31,7 +29,6 @@ function getFlagEmoji(countryName: string): string {
   return flags[countryName] || "🏳️";
 }
 
-// 日本時間の読みやすいフォーマットに変換する関数
 function formatJST(dateString: string): string {
   if (!dateString) return "日時未定";
   try {
@@ -63,22 +60,16 @@ function MatchesIndex() {
         
         <div className="space-y-3">
           {matches?.map((m) => {
-            // 試合開始時刻のタイムスタンプ
             const matchTime = new Date(m.match_date || (m as any).date).getTime();
             const now = Date.now();
-            
-            // 試合開始30分前のデッドライン
             const deadline = matchTime - 30 * 60 * 1000;
             const isBetOpen = now < deadline && m.status === "scheduled";
-
-            // ステージ名の取得 (DBにstageがなければデフォルトで「ベスト36」を表示する安全弁)
             const stageName = (m as any).stage || "ベスト36";
 
             return (
               <div 
                 key={m.id} 
                 onClick={() => {
-                  // 受付中の場合のみ詳細ページへ遷移できるガード
                   if (isBetOpen) {
                     navigate({ to: "/matches/$matchId", params: { matchId: m.id } });
                   }
@@ -89,7 +80,6 @@ function MatchesIndex() {
                     : "opacity-75 border-border/60 bg-muted/20"
                 }`}
               >
-                {/* ヘッダー: ステージ情報 & 受付ステータス */}
                 <div className="flex justify-between items-center text-xs mb-3">
                   <span className="font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
                     {stageName}
@@ -105,7 +95,6 @@ function MatchesIndex() {
                   )}
                 </div>
 
-                {/* メイン: 対戦カードと国旗 */}
                 <div className="flex justify-center items-center py-2 text-base font-bold">
                   <div className="flex items-center gap-2 w-5/12 justify-end text-right">
                     <span>{m.home_team}</span>
@@ -118,7 +107,6 @@ function MatchesIndex() {
                   </div>
                 </div>
 
-                {/* フッター: 試合開始日時(日本時間) */}
                 <div className="text-center mt-3 pt-2 border-t border-border/40 text-xs text-muted-foreground font-medium">
                   試合開始 (JST): {formatJST(m.match_date || (m as any).date)}
                 </div>
