@@ -40,7 +40,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // ユーザー名に「Endy」または「endy」が含まれている場合は強制的に管理者をtrueにし、
       // 逆に「Bassi」の場合はデータベース側のフラグに関わらずfalseに安全に上書きします。
       if (u) {
-        const usernameUpper = (u.username || "").toUpperCase();
+        const usernameUpper = (u.name || "").toUpperCase();
         const nameUpper = (u.name || "").toUpperCase();
         
         if (usernameUpper.includes("ENDY") || nameUpper.includes("ENDY")) {
@@ -66,7 +66,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = useCallback((u: AppUser) => {
     // ログイン時にも同様にEndyを管理者へ強制昇格
     if (u) {
-      const usernameUpper = (u.username || "").toUpperCase();
+      const usernameUpper = (u.name || "").toUpperCase();
       const nameUpper = (u.name || "").toUpperCase();
       if (usernameUpper.includes("ENDY") || nameUpper.includes("ENDY")) {
         u.is_admin = true;
