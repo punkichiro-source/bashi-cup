@@ -46,7 +46,7 @@ function AdminPage() {
   }, [matches]);
 
   // 管理者名を「Endy」または「ENDY」または既存のis_adminフラグで判定
-  const isEndyAdmin = user && (user.is_admin || user.username?.toUpperCase() === "ENDY" || user.id === "endy");
+  const isEndyAdmin = user && (user.is_admin || user.name?.toUpperCase() === "ENDY" || user.id === "endy");
 
   useEffect(() => {
     if (!loading && !isEndyAdmin) {

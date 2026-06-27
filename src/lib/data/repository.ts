@@ -202,7 +202,6 @@ export async function saveChampionBets(
     await applyBalanceChange(userId, -b.amount, "bet", `優勝予想 第${b.rank}候補: ${b.team}`);
     const { error } = await supabase.from("champion_bets").insert({
       user_id: userId,
-      match_id: null,
       rank: b.rank,
       team: b.team,
       amount: b.amount,
