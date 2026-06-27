@@ -156,6 +156,7 @@ function BetsPage() {
                   amount={b.amount}
                   when={b.created_at}
                   badge={matchStatusBadge(b.matches?.status)}
+                  result={resultBadge(b)}
                 />
               ))
             )}
