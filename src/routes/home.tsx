@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
 import { listTransactions, nextMatch, rankedUsers } from "@/lib/data/repository";
 import { formatDateTime, formatKickoff } from "@/lib/format";
+import { supabase } from "@/integrations/supabase/client"; // 直接取得用にインポート
 
 export const Route = createFileRoute("/home")({
   head: () => ({ meta: [{ title: "ホーム — BASHI CUP 2026" }] }),
@@ -22,6 +23,24 @@ function HomePage() {
     enabled: !!uid,
   });
 
+  // ★ ヘッダーと同一のキー ("headerBalance") で、users テーブルから直接最新残高を取得する
+  const { data: latestBalance } = useQuery({
+    queryKey: ["headerBalance", uid],
+    queryFn: async () => {
+      if (!uid) return 0;
+      const { data, error } = await supabase
+        .from("users")
+        .select("balance")
+        .eq("id", uid)
+        .single();
+        
+      if (error) throw error;
+      return data?.balance ?? 0;
+    },
+    enabled: !!uid,
+    initialData: user?.balance ?? 0 // セッション初期値をフォールバックに利用
+  });
+
   const rank = ranking ? ranking.findIndex((u) => u.id === uid) + 1 : 0;
 
   return (
@@ -30,7 +49,8 @@ function HomePage() {
         <div className="rounded-xl border border-border bg-card p-4">
           <p className="text-[10px] uppercase tracking-widest text-muted-foreground">保有BASHI</p>
           <p className="mt-1 text-2xl font-semibold text-primary">
-            {user ? user.balance.toLocaleString() : "-"}
+            {/* ★ user.balance ではなく、リアルタイムの latestBalance を参照 */}
+            {user ? latestBalance.toLocaleString() : "-"}
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-4">
