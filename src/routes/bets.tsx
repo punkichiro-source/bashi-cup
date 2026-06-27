@@ -32,6 +32,16 @@ function matchStatusBadge(status?: string): { label: string; cls: string } {
   }
 }
 
+// 試合終了後の的中/ハズレ結果バッジを返す（未確定なら null）
+function resultBadge(row: any): { label: string; cls: string } | null {
+  const status = row?.matches?.status;
+  if (status !== "finished") return null;
+  const win = (row?.payout ?? 0) > 0;
+  return win
+    ? { label: `的中！ (+${formatBashi(row.payout)})`, cls: "bg-primary/20 text-primary" }
+    : { label: "ハズレ", cls: "bg-destructive/20 text-destructive" };
+}
+
 function Empty() {
   return (
     <div className="rounded-xl border border-border bg-card p-8 text-center text-sm text-muted-foreground">
@@ -39,6 +49,7 @@ function Empty() {
     </div>
   );
 }
+
 
 function BetCard({
   who,
