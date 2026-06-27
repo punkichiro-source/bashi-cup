@@ -208,6 +208,27 @@ export type Database = {
         }
         Relationships: []
       }
+      players: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          team: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          team: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          team?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           amount: number
@@ -275,7 +296,33 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      v_pulldown_players: {
+        Row: {
+          country_name: string | null
+          display_name: string | null
+          id: string | null
+          name: string | null
+          position_order: number | null
+          team: string | null
+        }
+        Insert: {
+          country_name?: string | null
+          display_name?: never
+          id?: string | null
+          name?: string | null
+          position_order?: never
+          team?: string | null
+        }
+        Update: {
+          country_name?: string | null
+          display_name?: never
+          id?: string | null
+          name?: string | null
+          position_order?: never
+          team?: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       [_ in never]: never
