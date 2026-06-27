@@ -25,26 +25,42 @@ function MatchDetailPage() {
 
   // フォーム用ローカル状態
   const [userId, setUserId] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
   const [pick, setPick] = useState<Side>("HOME");
   const [matchAmount, setMatchAmount] = useState<string>("");
   
-  // 複数名選択のための配列型状態
   const [goalBets, setGoalBets] = useState<{ player_name: string; amount: string }[]>([
     { player_name: "", amount: "" }
   ]);
 
-  // ユーザーIDの取得を強化（セッション変更も監視）
+  // セッションのリアルタイム取得と監視を徹底化
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        console.log("ログイン中のユーザーIDを取得しました:", user.id);
-        setUserId(user.id);
-      } else {
-        console.warn("ユーザーがログインしていません。Authセッションを確認してください。");
+    let mounted = true;
+
+    // 1. 初期ロード時のセッション確認
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUserId(session.user.id);
       }
+      setAuthLoading(false);
+    });
+
+    // 2. 状態変化のリスナー登録
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      if (session?.user) {
+        setUserId(session.user.id);
+      } else {
+        setUserId(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
     };
-    checkUser();
   }, []);
 
   // 1. 試合データの取得
@@ -113,31 +129,24 @@ function MatchDetailPage() {
     setGoalBets(updated);
   };
 
-  // 予想保存ミューテーション（ログ出力を大幅強化）
+  // 予想保存ミューテーション
   const mutation = useMutation({
     mutationFn: async () => {
+      // 予期せぬ実行を防ぐガードをここに集約
       if (!userId) {
-        throw new Error("ユーザーIDが取得できていません。ログイン状態を確認してください。");
+        throw new Error("ログインセッションの読み込みが完了していません。もう一度お試しください。");
       }
       if (!match) {
-        throw new Error("試合データが読み込まれていません。");
+        throw new Error("試合情報が読み込まれていません。");
       }
 
-      console.log("=== 予想保存処理を開始します ===");
-      console.log("ユーザーID:", userId);
-      console.log("試合ID:", match.id);
-
-      // 1. 勝敗予想の保存
+      // ① 勝敗予想の保存
       const parsedMatchAmount = Number(matchAmount);
       if (matchAmount && !isNaN(parsedMatchAmount) && parsedMatchAmount > 0) {
-        console.log(`勝敗予想を保存中... 投票先: ${pick}, 金額: ${parsedMatchAmount}`);
         await saveMatchBet(userId, match, pick, parsedMatchAmount);
-        console.log("勝敗予想の保存に成功しました");
-      } else {
-        console.log("有効な勝敗予想の金額が入力されていないため、勝敗の保存はスキップします。");
       }
 
-      // 2. ゴール予想の保存
+      // ② ゴール予想の保存
       const validGoalBets = goalBets
         .filter(b => b.player_name.trim() !== "" && !isNaN(Number(b.amount)) && Number(b.amount) > 0)
         .map(b => ({
@@ -145,33 +154,37 @@ function MatchDetailPage() {
           amount: Number(b.amount)
         }));
 
-      if (validGoalBets.length > 0) {
-        console.log("ゴール予想を一括保存中...", validGoalBets);
-        await saveGoalBets(userId, match, validGoalBets);
-        console.log("ゴール予想の保存に成功しました");
-      } else {
-        console.log("有効なゴール予想（選手名と金額）がないため、ゴールの保存はスキップします。");
-      }
-      
-      console.log("=== 全ての保存処理が完了しました ===");
+      await saveGoalBets(userId, match, validGoalBets);
     },
     onSuccess: () => {
-      // 関連するすべてのキャッシュを強制リフレッシュ
+      // キャッシュを一括クリアして「みんなの予想」や自分の画面を即時更新
       queryClient.invalidateQueries({ queryKey: ["match", matchId] });
       queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
       queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
-      queryClient.invalidateQueries({ queryKey: ["allUsersBets"] }); // みんなの予想一覧のキャッシュもクリア
+      queryClient.invalidateQueries({ queryKey: ["allUsersBets"] });
       
       alert("予想をすべて保存しました！");
     },
     onError: (err: any) => {
-      console.error("保存処理中にエラーが発生しました:", err);
-      alert("保存に失敗しました:\n" + (err.message || "エラーの詳細をコンソルで確認してください"));
+      alert("保存に失敗しました:\n" + (err.message || "エラーが発生しました"));
     },
   });
 
-  if (isMatchLoading) return <AppShell title="読み込み中..."><div className="p-4 text-muted-foreground">読み込み中...</div></AppShell>;
-  if (!match) return <AppShell title="エラー"><div className="p-4 text-muted-foreground">試合が見つかりません</div></AppShell>;
+  if (isMatchLoading || authLoading) {
+    return (
+      <AppShell title="読み込み中...">
+        <div className="p-4 text-muted-foreground">読み込み中...</div>
+      </AppShell>
+    );
+  }
+
+  if (!match) {
+    return (
+      <AppShell title="エラー">
+        <div className="p-4 text-muted-foreground">試合が見つかりません</div>
+      </AppShell>
+    );
+  }
 
   const canBet = match.status === "scheduled";
 
@@ -291,9 +304,9 @@ function MatchDetailPage() {
             <Button
               onClick={() => mutation.mutate()}
               className="w-full py-6 text-base font-bold bg-primary text-primary-foreground rounded-xl"
-              disabled={mutation.isPending}
+              disabled={mutation.isPending || !userId}
             >
-              {mutation.isPending ? "保存中..." : "この内容で予想を確定する"}
+              {mutation.isPending ? "保存中..." : !userId ? "ユーザー認証中..." : "この内容で予想を確定する"}
             </Button>
 
           </div>
