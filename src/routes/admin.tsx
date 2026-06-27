@@ -6,6 +6,7 @@ import { AppShell } from "@/components/AppShell";
 import { useSession } from "@/lib/auth/session";
 import { listMatches, listPlayers } from "@/lib/data/repository";
 import { supabase } from "@/integrations/supabase/client";
+import { processPayout } from "@/lib/data/payout";
 import {
   manualUpdateMatch,
   reSettleMatch,
@@ -183,6 +184,32 @@ function AdminPage() {
                     更新・精算
                   </button>
                 </div>
+
+                {/* 精算を実行（結果反映）: payout.ts の processPayout を呼び出す */}
+                <button
+                  disabled={!!busy}
+                  className="w-full rounded-xl gold-gradient py-2.5 text-xs font-semibold text-primary-foreground disabled:opacity-40"
+                  onClick={async () => {
+                    const hVal = (document.getElementById(`hs-${m.id}`) as HTMLInputElement).value;
+                    const aVal = (document.getElementById(`as-${m.id}`) as HTMLInputElement).value;
+                    const h = parseInt(hVal === "" ? "0" : hVal);
+                    const a = parseInt(aVal === "" ? "0" : aVal);
+                    const winner = h > a ? m.home_team : a > h ? m.away_team : "draw";
+                    await run(
+                      "payout" + m.id,
+                      () =>
+                        processPayout(m.id, {
+                          home_score: h,
+                          away_score: a,
+                          winner,
+                          scorers: currentSelected,
+                        }),
+                      () => "結果を反映し、配当を支払いました",
+                    );
+                  }}
+                >
+                  精算を実行（結果反映）
+                </button>
 
                 {/* 💡 得点者の選択エリア */}
                 <div className="border-t border-border/40 pt-2">

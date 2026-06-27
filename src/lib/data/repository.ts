@@ -242,17 +242,30 @@ export async function listPlayers(): Promise<{ id: string; name: string; team: s
   }
 }
 
-// ---- 管理者用：試合結果と得点者を保存する ----
+// ---- 管理者用：試合結果と得点者を保存し、的中判定・配当まで実行する ----
+// 配当ロジックは payout.ts に集約。ここから processPayout を呼び出して精算する。
 export async function updateMatchResult(
   matchId: string,
   updates: {
     home_score: number;
     away_score: number;
     status: "scheduled" | "live" | "finished";
-    winner: "HOME" | "AWAY" | null;
+    winner: "HOME" | "AWAY" | string | null;
     scorers: string[]; // 選択された得点者（名前の配列）
   }
 ): Promise<void> {
+  // 結果が確定（finished）した場合は processPayout で精算まで一気に行う
+  if (updates.status === "finished") {
+    const { processPayout } = await import("@/lib/data/payout");
+    await processPayout(matchId, {
+      home_score: updates.home_score,
+      away_score: updates.away_score,
+      winner: updates.winner ?? "draw",
+      scorers: updates.scorers,
+    });
+    return;
+  }
+
   const { error } = await supabase
     .from("matches")
     .update({
@@ -285,11 +298,13 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         id,
         amount,
         pick,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name ),
         match_id,
-        matches ( home_team, away_team, status, kickoff_time )
+        matches ( home_team, away_team, status, winner, scorers, kickoff_time )
       `)
       .order("created_at", { ascending: false });
 
@@ -300,11 +315,13 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         id,
         amount,
         player_name,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name ),
         match_id,
-        matches ( home_team, away_team, status )
+        matches ( home_team, away_team, status, winner, scorers )
       `)
       .order("created_at", { ascending: false });
 
@@ -316,6 +333,8 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         amount,
         rank,
         team,
+        settled,
+        payout,
         created_at,
         user_id,
         users ( name )
