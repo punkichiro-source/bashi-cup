@@ -10,6 +10,7 @@ import {
   getUserMatchBet,
   saveGoalBets,
   saveMatchBet,
+  listPlayers, // 💡 連動用に新設した関数を追加インポート
 } from "@/lib/data/repository";
 import { formatKickoff } from "@/lib/format";
 import { GAME } from "@/lib/game/config";
@@ -44,6 +45,9 @@ function MatchDetailPage() {
     enabled: !!uid,
   });
 
+  // 💡 事前登録された選手マスターデータを安全に取得
+  const { data: allPlayers = [] } = useQuery({ queryKey: ["players"], queryFn: listPlayers });
+
   const [pick, setPick] = useState<Side | null>(null);
   const [amount, setAmount] = useState("");
   const [rows, setRows] = useState<GoalRow[]>([]);
@@ -69,6 +73,12 @@ function MatchDetailPage() {
   if (!match) return null;
 
   const editable = match.status === "scheduled";
+
+  // 💡 安全対策を施しつつ、この試合の両チームに所属する選手だけを厳選してフィルタリング
+  const safePlayers = Array.isArray(allPlayers) ? allPlayers : [];
+  const matchPlayers = safePlayers.filter(
+    (p) => p && (p.team === match.home_team || p.team === match.away_team)
+  );
 
   async function saveWinPrediction() {
     if (!editable || !pick || !match) return;
@@ -176,7 +186,8 @@ function MatchDetailPage() {
               const row = rows[i] ?? { player_name: "", amount: "" };
               return (
                 <div key={i} className="flex gap-2">
-                  <input
+                  {/* 💡 テキスト型のinputから、セレクトボックス（プルダウン式）に安全変更 */}
+                  <select
                     disabled={!editable}
                     value={row.player_name}
                     onChange={(e) => {
@@ -184,9 +195,16 @@ function MatchDetailPage() {
                       next[i] = { ...row, player_name: e.target.value };
                       setRows(next);
                     }}
-                    placeholder={`選手名 ${i + 1}`}
-                    className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
-                  />
+                    className="flex-1 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary text-left"
+                  >
+                    <option value="">選手を選択してください</option>
+                    {matchPlayers.map((p) => (
+                      <option key={p.id} value={p.name}>
+                        {p.name} ({p.team === match.home_team ? "HOME" : "AWAY"})
+                      </option>
+                    ))}
+                  </select>
+
                   <input
                     disabled={!editable}
                     inputMode="numeric"
@@ -197,7 +215,7 @@ function MatchDetailPage() {
                       setRows(next);
                     }}
                     placeholder="金額"
-                    className="w-24 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none"
+                    className="w-24 rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </div>
               );
