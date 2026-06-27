@@ -211,24 +211,34 @@ export async function saveChampionBets(
   }
 }
 
-// ---- 選手一覧をDBから安全に取得（ビュー連動・全件ソート取得版） ----
-export async function listPlayers(): Promise<{ id: string; name: string; team: string; display_name: string }[]> {
+// ---- 選手一覧をDBから安全に取得（100件制限突破・JS側ソート完全版） ----
+export async function listPlayers(): Promise<{ id: string; name: string; team: string }[]> {
   try {
-    // 作成したSQLビュー「v_pulldown_players」からデータを引っ張ります
+    // 生のテーブルから、0〜1500の範囲指定（range）を使って1249件を一気にフェッチします
     const { data, error } = await supabase
-      .from("v_pulldown_players")
-      .select("id, name, team, display_name")
-      .range(0, 1500); // デフォルトの100件制限を無視して最大1500件（1249人全員）を取得
+      .from("players")
+      .select("id, name, team")
+      .range(0, 1500);
     
     if (error) {
-      console.error("v_pulldown_playersビュー読み込み時のエラーを検出しました:", error);
+      console.error("playersテーブルから直接取得する際にエラーが発生しました:", error);
       return [];
     }
-    
-    // DB側（VIEW）の設定に準拠し、国ごとに綺麗にまとまり、ポジション順・ID順になった配列がそのまま返ります
-    return (data || []) as { id: string; name: string; team: string; display_name: string }[];
+
+    const rawList = data || [];
+
+    // 取得した1249件をプログラム側で並び替えます
+    return rawList.sort((a, b) => {
+      // 1. まずは国名（team）でアルファベット/五十音順に並び替え
+      if (a.team !== b.team) {
+        return a.team.localeCompare(b.team, "ja");
+      }
+      // 2. 同じ国の中では、名前（name）順にする
+      return a.name.localeCompare(b.name, "ja");
+    });
+
   } catch (e) {
-    console.error("listPlayersメソッドのフェイルセーフが作動しました:", e);
+    console.error("listPlayersのフェイルセーフが作動しました:", e);
     return [];
   }
 }
