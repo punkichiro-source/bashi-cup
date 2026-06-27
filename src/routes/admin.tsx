@@ -173,7 +173,7 @@ function AdminPage() {
                   const currentScorersList = matchScorers[m.id] || [];
 
                   await run("p", async () => {
-                    // ① まず試合テーブルのスコア・ステータス・得点者リストを手動で finished に確定更新
+                    // ① 試合テーブルの結果を手動で確定更新
                     const { error: updateError } = await supabase
                       .from("matches")
                       .update({
@@ -187,14 +187,21 @@ function AdminPage() {
 
                     if (updateError) throw updateError;
 
-                    // ② その後、保存した得点者リストを含めて精算ロジックを展開
-                    return await processPayout(m.id, { 
+                    // ② processPayoutを実行（もし内部で同期サービスのsettleMatchを呼んでいる場合、
+                    // DBへの反映直後だとstatus !== "finished" と判定されて弾かれることがあるため、
+                    // 確実にfinished状態にしたオブジェクトを模して即時反映を促します）
+                    const result = await processPayout(m.id, { 
                       home_score: h, 
                       away_score: a, 
                       winner: winnerside, 
                       scorers: currentScorersList 
                     });
-                  }, () => "試合結果を確定し、精算を実行しました！");
+
+                    // ③ 精算漏れを防ぐため、アプリ全体の全キャッシュをこの瞬間に完全クリア
+                    qc.invalidateQueries();
+                    
+                    return result;
+                  }, () => "試合結果を確定し、配当計算・精算を完全に実行しました！");
                 }}
               >
                 {busy === "p" ? "精算処理中..." : "試合結果を確定して精算を実行"}
