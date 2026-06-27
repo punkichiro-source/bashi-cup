@@ -50,6 +50,9 @@ function ChampionPage() {
   ]);
   const [saving, setSaving] = useState(false);
 
+  // 各スロットごとの正しい倍率定義（第1候補=5倍、第2候補=3倍、第3候補=2倍）
+  const CHAMPION_ODDS = ["x5倍", "x3倍", "x2倍"];
+
   useEffect(() => {
     if (bets && bets.length > 0) {
       const next: Row[] = [
@@ -99,7 +102,10 @@ function ChampionPage() {
           <div key={i} className="rounded-xl border border-border bg-card p-4">
             <div className="mb-2 flex items-center justify-between">
               <p className="font-display text-lg text-primary">第{i + 1}候補</p>
-              <span className="text-[11px] text-muted-foreground">配当 x{ODDS.champion[i + 1]}</span>
+              {/* ★ 正しい倍率表記（x5倍, x3倍, x2倍）を綺麗に見せるバッジデザイン */}
+              <span className="text-[11px] bg-amber-500/10 text-amber-600 font-bold px-2 py-0.5 rounded border border-amber-500/20表">
+                的中配当: {CHAMPION_ODDS[i]}
+              </span>
             </div>
             <select
               disabled={!editable}
