@@ -58,6 +58,7 @@ function BetCard({
   when,
   badge,
   side,
+  result,
 }: {
   who: string;
   what: string;
@@ -65,6 +66,7 @@ function BetCard({
   when?: string;
   badge?: { label: string; cls: string };
   side?: string;
+  result?: { label: string; cls: string } | null;
 }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
@@ -72,7 +74,14 @@ function BetCard({
         <p className="font-display text-base text-primary">{who}</p>
         <span className="text-sm font-semibold text-primary">{formatBashi(amount)}</span>
       </div>
-      <p className="mt-1 text-sm text-foreground">{what}</p>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <p className="text-sm text-foreground">{what}</p>
+        {result && (
+          <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${result.cls}`}>
+            {result.label}
+          </span>
+        )}
+      </div>
       <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
         <span>{when ? formatDateTime(when) : ""}</span>
         <div className="flex items-center gap-2">
