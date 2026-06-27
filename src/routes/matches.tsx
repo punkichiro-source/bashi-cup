@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Outlet } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { AppShell } from "@/components/AppShell";
-import { getMatches } from "@/lib/data/repository";
+import { listMatches } from "@/lib/data/repository";
 import { formatKickoff } from "@/lib/format";
 
 export const Route = createFileRoute("/matches")({
@@ -12,7 +12,7 @@ function MatchesPage() {
   const navigate = useNavigate();
   const { data: matches = [], isLoading } = useQuery({
     queryKey: ["matches"],
-    queryFn: getMatches,
+    queryFn: listMatches,
   });
 
   return (
