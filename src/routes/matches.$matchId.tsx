@@ -29,7 +29,6 @@ function MatchDetailPage() {
   const [matchAmount, setMatchAmount] = useState<string>("");
   const [scorerName, setScorerName] = useState<string>("");
   const [goalAmount, setGoalAmount] = useState<string>("");
-  const [searchQuery, setSearchQuery] = useState<string>("");
 
   // ユーザーIDの取得
   useEffect(() => {
@@ -44,7 +43,7 @@ function MatchDetailPage() {
     queryFn: () => getMatch(matchId),
   });
 
-  // 2. 選手リストの取得
+  // 2. DBから全選手リストを取得（JS側でチーム順・名前順にソート済みデータ）
   const { data: players = [] } = useQuery({
     queryKey: ["players"],
     queryFn: listPlayers,
@@ -84,12 +83,12 @@ function MatchDetailPage() {
     mutationFn: async () => {
       if (!userId || !match) return;
 
-      // 1. 勝敗予想の保存 (金額が入力されている場合)
+      // 1. 勝敗予想の保存
       if (matchAmount) {
         await saveMatchBet(userId, match, pick, Number(matchAmount));
       }
 
-      // 2. ゴール予想の保存 (選手名と金額が入力されている場合)
+      // 2. ゴール予想の保存
       if (scorerName && goalAmount) {
         await saveGoalBets(userId, match, [
           { player_name: scorerName, amount: Number(goalAmount) }
@@ -100,7 +99,7 @@ function MatchDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["match", matchId] });
       queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
       queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
-      alert("すべての予想を保存しました！");
+      alert("予想を保存しました！");
     },
     onError: (err: any) => {
       alert("保存に失敗しました: " + (err.message || "エラーが発生しました"));
@@ -112,15 +111,20 @@ function MatchDetailPage() {
 
   const canBet = match.status === "scheduled";
 
-  // 選手検索フィルタリング
-  const filteredPlayers = searchQuery
-    ? players.filter(p => p.name.includes(searchQuery) || p.team.includes(searchQuery)).slice(0, 5)
-    : [];
+  // 1249件の選手データをセレクトボックスの <optgroup> 用に国（チーム）ごとにグループ化
+  const groupedPlayers = players.reduce((acc, player) => {
+    if (!acc[player.team]) {
+      acc[player.team] = [];
+    }
+    acc[player.team].push(player);
+    return acc;
+  }, {} as Record<string, typeof players>);
 
   return (
     <AppShell title={`${match.home_team} vs ${match.away_team}`}>
       <div className="p-4 space-y-6 max-w-xl mx-auto">
-        {/* 試合ヘッダー */}
+        
+        {/* 試合カード表示 */}
         <div className="text-center py-6 bg-card rounded-xl border border-border">
           <div className="flex justify-around items-center text-xl font-bold">
             <div className="text-right w-1/3">{match.home_team}</div>
@@ -130,12 +134,13 @@ function MatchDetailPage() {
           <p className="text-xs text-muted-foreground mt-3">ステータス: {match.status}</p>
         </div>
 
-        {/* 予想フォームセクション */}
+        {/* 予想入力フォーム */}
         {canBet ? (
           <div className="space-y-6">
-            {/* 1. 勝敗予想 */}
-            <div className="bg-card p-4 rounded-xl border border-border space-y-4">
-              <h2 className="text-sm font-semibold border-b border-border pb-2">① 勝敗予想</h2>
+            
+            {/* 勝敗予想ブロック */}
+            <div className="bg-card p-5 rounded-xl border border-border space-y-4">
+              <h2 className="text-base font-semibold text-primary">勝敗予想</h2>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -143,7 +148,7 @@ function MatchDetailPage() {
                   onClick={() => setPick("HOME")}
                   className="w-full"
                 >
-                  {match.home_team} の勝利
+                  {match.home_team} 勝利
                 </Button>
                 <Button
                   type="button"
@@ -151,83 +156,69 @@ function MatchDetailPage() {
                   onClick={() => setPick("AWAY")}
                   className="w-full"
                 >
-                  {match.away_team} の勝利
+                  {match.away_team} 勝利
                 </Button>
               </div>
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">勝敗に賭けるBASHI</label>
+              
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">勝敗予想に賭けるBASHI額</label>
                 <Input
                   type="number"
-                  placeholder="額を入力"
+                  placeholder="数値を入力"
                   value={matchAmount}
                   onChange={(e) => setMatchAmount(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* 2. 得点者予想 */}
-            <div className="bg-card p-4 rounded-xl border border-border space-y-4">
-              <h2 className="text-sm font-semibold border-b border-border pb-2">② 得点者 (スコアラー) 予想</h2>
+            {/* 得点者予想ブロック */}
+            <div className="bg-card p-5 rounded-xl border border-border space-y-4">
+              <h2 className="text-base font-semibold text-primary">得点者 (スコアラー) 予想</h2>
               
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground block">選手を検索して選択</label>
-                <Input
-                  type="text"
-                  placeholder="選手名または国名を入力..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                
-                {/* 検索候補 */}
-                {filteredPlayers.length > 0 && (
-                  <div className="bg-popover border border-border rounded-md divide-y divide-border overflow-hidden">
-                    {filteredPlayers.map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => {
-                          setScorerName(p.name);
-                          setSearchQuery("");
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-muted block"
-                      >
-                        {p.name} <span className="text-xs text-muted-foreground">({p.team})</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {scorerName && (
-                  <div className="p-2 bg-secondary text-secondary-foreground text-xs rounded-md flex justify-between items-center">
-                    <span>選択中: <strong>{scorerName}</strong></span>
-                    <button type="button" onClick={() => setScorerName("")} className="text-muted-foreground hover:text-foreground">✕</button>
-                  </div>
-                )}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">選手を選択</label>
+                <select
+                  value={scorerName}
+                  onChange={(e) => setScorerName(e.target.value)}
+                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  <option value="">-- 選手を選択してください --</option>
+                  {Object.entries(groupedPlayers).map(([teamName, teamPlayers]) => (
+                    <optgroup key={teamName} label={teamName}>
+                      {teamPlayers.map((p) => (
+                        <option key={p.id} value={p.name}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
 
-              <div>
-                <label className="text-xs text-muted-foreground block mb-1">ゴール予想に賭けるBASHI</label>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">ゴール予想に賭けるBASHI額</label>
                 <Input
                   type="number"
-                  placeholder="額を入力"
+                  placeholder="数値を入力"
                   value={goalAmount}
                   onChange={(e) => setGoalAmount(e.target.value)}
                 />
               </div>
             </div>
 
-            {/* 送信ボタン */}
+            {/* 確定ボタン */}
             <Button
               onClick={() => mutation.mutate()}
-              className="w-full py-6 text-base font-bold"
+              className="w-full py-6 text-base font-bold bg-primary text-primary-foreground"
               disabled={mutation.isPending}
             >
               {mutation.isPending ? "保存中..." : "この内容で予想を確定する"}
             </Button>
+
           </div>
         ) : (
           <div className="p-4 bg-muted rounded-lg text-center text-sm text-muted-foreground">
-            この試合は現在、予想の新規登録・変更は行えません。
+            この試合は現在、予想の変更期間外です。
           </div>
         )}
       </div>
