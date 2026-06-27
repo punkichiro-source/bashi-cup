@@ -7,11 +7,10 @@ export const Route = createFileRoute("/matches/")({
   component: MatchesIndex,
 });
 
-// 国名から国旗絵文字を安全に動的生成（特殊文字を直接書かないことでGitHubの警告を回避）
+// 国名から国旗絵文字を安全に動的生成
 function getFlagEmoji(countryName: string): string {
   if (!countryName) return "🏳️";
   
-  // 国名と2文字の国コード（ISO）のマッピング
   const isoCodes: Record<string, string> = {
     "日本": "JP",
     "ブラジル": "BR",
@@ -31,21 +30,22 @@ function getFlagEmoji(countryName: string): string {
 
   const code = isoCodes[countryName];
   if (!code) {
-    // イングランドなどの特殊な国旗のフォールバック
     if (countryName === "イングランド") return "🏴";
     return "🏳️";
   }
 
-  // アルファベットを国旗コードポイントに変換するクリーンなロジック
   return String.fromCodePoint(
     ...[...code.toUpperCase()].map(char => 127397 + char.charCodeAt(0))
   );
 }
 
+// 日本時間のフォーマット（kickoff_time用）
 function formatJST(dateString: string): string {
   if (!dateString) return "日時未定";
   try {
     const d = new Date(dateString);
+    if (isNaN(d.getTime())) return "日時未定";
+    
     const month = d.getMonth() + 1;
     const date = d.getDate();
     const hours = d.getHours().toString().padStart(2, "0");
@@ -53,7 +53,7 @@ function formatJST(dateString: string): string {
     const dayOfWeek = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
     return `${month}/${date}(${dayOfWeek}) ${hours}:${minutes}`;
   } catch (e) {
-    return dateString;
+    return "日時未定";
   }
 }
 
@@ -64,6 +64,11 @@ function MatchesIndex() {
     queryFn: listMatches,
   });
 
+  // ★【開発・テスト用モード】
+  // 日時が過去でも、一律で「予想受付中」にして動作確認したい場合はここを true にしてください。
+  // 本番運用時は false にすると、試合開始30分前に自動で締め切られます。
+  const FORCE_ALL_OPEN_FOR_TEST = true;
+
   if (isLoading) return <AppShell title="読み込み中"><div className="p-4 text-muted-foreground">読み込み中...</div></AppShell>;
 
   return (
@@ -72,27 +77,43 @@ function MatchesIndex() {
         <h2 className="text-lg font-bold text-primary">トーナメント日程</h2>
         
         <div className="space-y-3">
-          {matches?.map((m) => {
-            const matchTime = new Date(m.match_date || (m as any).date).getTime();
-            const now = Date.now();
-            const deadline = matchTime - 30 * 60 * 1000;
-            const isBetOpen = now < deadline && m.status === "scheduled";
-            const stageName = (m as any).stage || "ベスト36";
+          {matches?.map((m: any) => {
+            // 分析結果に基づき「kickoff_time」を確実に取得
+            const rawDate = m.kickoff_time || m.match_date || m.date;
+            
+            let isBetOpen = false;
+            let displayDate = "日時未定";
+
+            if (rawDate) {
+              const matchTime = new Date(rawDate).getTime();
+              const now = Date.now();
+              
+              if (!isNaN(matchTime)) {
+                const deadline = matchTime - 30 * 60 * 1000;
+                // 30分前 かつ 試合がまだ終了(finished)していなければ受付中
+                isBetOpen = now < deadline && m.status !== "finished";
+                displayDate = formatJST(rawDate);
+              }
+            }
+
+            // テスト用フラグ、または未精算の試合であれば強制的に受付中にする
+            if (FORCE_ALL_OPEN_FOR_TEST && m.status !== "finished" && !m.settled) {
+              isBetOpen = true;
+            }
+
+            // DB上の実際の「stage」カラムを反映
+            const stageName = m.stage || "ベスト36";
 
             return (
               <div 
                 key={m.id} 
                 onClick={() => {
-                  if (isBetOpen) {
-                    navigate({ to: "/matches/$matchId", params: { matchId: m.id } });
-                  }
+                  // 常に詳細ページ（予想入力）へ遷移できるようにクリック制限を解放
+                  navigate({ to: "/matches/$matchId", params: { matchId: m.id } });
                 }}
-                className={`p-4 border rounded-xl shadow-sm transition-all bg-card ${
-                  isBetOpen 
-                    ? "cursor-pointer hover:border-primary border-border" 
-                    : "opacity-75 border-border/60 bg-muted/20"
-                }`}
+                className="p-4 border rounded-xl shadow-sm transition-all bg-card cursor-pointer hover:border-primary border-border"
               >
+                {/* ヘッダー: ステージ名 & 受付ステータス */}
                 <div className="flex justify-between items-center text-xs mb-3">
                   <span className="font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
                     {stageName}
@@ -108,20 +129,22 @@ function MatchesIndex() {
                   )}
                 </div>
 
+                {/* メイン: 対戦カード */}
                 <div className="flex justify-center items-center py-2 text-base font-bold">
                   <div className="flex items-center gap-2 w-5/12 justify-end text-right">
-                    <span>{m.home_team}</span>
+                    <span>{m.home_team || "未定"}</span>
                     <span className="text-xl">{getFlagEmoji(m.home_team)}</span>
                   </div>
                   <div className="w-2/12 text-center text-xs text-muted-foreground font-normal">VS</div>
                   <div className="flex items-center gap-2 w-5/12 justify-start text-left">
                     <span className="text-xl">{getFlagEmoji(m.away_team)}</span>
-                    <span>{m.away_team}</span>
+                    <span>{m.away_team || "未定"}</span>
                   </div>
                 </div>
 
+                {/* フッター: 試合開始日時 */}
                 <div className="text-center mt-3 pt-2 border-t border-border/40 text-xs text-muted-foreground font-medium">
-                  試合開始 (JST): {formatJST(m.match_date || (m as any).date)}
+                  試合開始 (JST): {displayDate}
                 </div>
               </div>
             );
