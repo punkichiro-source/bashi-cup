@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
-import { Home, ListChecks, Trophy, Crown, Receipt, Shield, LogOut } from "lucide-react";
+import { Home, ListChecks, Trophy, Crown, Users, Shield, LogOut } from "lucide-react";
 import { useSession } from "@/lib/auth/session";
 import { formatBashi } from "@/lib/format";
 
@@ -8,8 +8,8 @@ const NAV = [
   { to: "/home", label: "ホーム", icon: Home },
   { to: "/matches", label: "試合", icon: ListChecks },
   { to: "/champion", label: "優勝予想", icon: Crown },
+  { to: "/bets", label: "みんなの予想", icon: Users },
   { to: "/ranking", label: "順位", icon: Trophy },
-  { to: "/transactions", label: "履歴", icon: Receipt },
 ] as const;
 
 export function AppShell({ children, title }: { children: ReactNode; title?: string }) {
