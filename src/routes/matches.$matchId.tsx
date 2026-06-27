@@ -27,8 +27,11 @@ function MatchDetailPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [pick, setPick] = useState<Side>("HOME");
   const [matchAmount, setMatchAmount] = useState<string>("");
-  const [scorerName, setScorerName] = useState<string>("");
-  const [goalAmount, setGoalAmount] = useState<string>("");
+  
+  // 複数名選択のための配列型状態: [{ player_name: string, amount: string }]
+  const [goalBets, setGoalBets] = useState<{ player_name: string; amount: string }[]>([
+    { player_name: "", amount: "" }
+  ]);
 
   // ユーザーIDの取得
   useEffect(() => {
@@ -43,8 +46,8 @@ function MatchDetailPage() {
     queryFn: () => getMatch(matchId),
   });
 
-  // 2. DBから全選手リストを取得（JS側でチーム順・名前順にソート済みデータ）
-  const { data: players = [] } = useQuery({
+  // 2. 全選手リストの取得
+  const { data: allPlayers = [] } = useQuery({
     queryKey: ["players"],
     queryFn: listPlayers,
   });
@@ -63,7 +66,7 @@ function MatchDetailPage() {
     enabled: !!userId,
   });
 
-  // 既存データがある場合にフォームへ初期値を詰める
+  // 既存データがある場合にフォームへ初期値をセット
   useEffect(() => {
     if (existingMatchBet) {
       setPick(existingMatchBet.pick);
@@ -73,33 +76,69 @@ function MatchDetailPage() {
 
   useEffect(() => {
     if (existingGoalBets && existingGoalBets.length > 0) {
-      setScorerName(existingGoalBets[0].player_name);
-      setGoalAmount(existingGoalBets[0].amount.toString());
+      setGoalBets(
+        existingGoalBets.map((b) => ({
+          player_name: b.player_name,
+          amount: b.amount.toString(),
+        }))
+      );
     }
   }, [existingGoalBets]);
+
+  // 試合に関連する2チームの選手のみをフィルタリング
+  const matchPlayers = match
+    ? allPlayers.filter(p => p.team === match.home_team || p.team === match.away_team)
+    : [];
+
+  // ホーム選手とアウェイ選手に分ける
+  const homePlayers = matchPlayers.filter(p => p.team === match?.home_team);
+  const awayPlayers = matchPlayers.filter(p => p.team === match?.away_team);
+
+  // 得点者予想の行を追加
+  const addScorerRow = () => {
+    setGoalBets([...goalBets, { player_name: "", amount: "" }]);
+  };
+
+  // 得点者予想の行を削除
+  const removeScorerRow = (index: number) => {
+    const updated = [...goalBets];
+    updated.splice(index, 1);
+    setGoalBets(updated.length === 0 ? [{ player_name: "", amount: "" }] : updated);
+  };
+
+  // 得点者予想の特定行の値を更新
+  const updateScorerRow = (index: number, field: "player_name" | "amount", value: string) => {
+    const updated = [...goalBets];
+    updated[index][field] = value;
+    setGoalBets(updated);
+  };
 
   // 予想保存ミューテーション
   const mutation = useMutation({
     mutationFn: async () => {
       if (!userId || !match) return;
 
-      // 1. 勝敗予想の保存
+      // 1. 勝敗予想の保存 (金額がある場合のみ)
       if (matchAmount) {
         await saveMatchBet(userId, match, pick, Number(matchAmount));
       }
 
-      // 2. ゴール予想の保存
-      if (scorerName && goalAmount) {
-        await saveGoalBets(userId, match, [
-          { player_name: scorerName, amount: Number(goalAmount) }
-        ]);
-      }
+      // 2. ゴール予想の保存 (選手名と金額が有効なもののみフィルタリングして一括保存)
+      const validGoalBets = goalBets
+        .filter(b => b.player_name && Number(b.amount) > 0)
+        .map(b => ({
+          player_name: b.player_name,
+          amount: Number(b.amount)
+        }));
+
+      // リポジトリの saveGoalBets に有効な配列を渡す
+      await saveGoalBets(userId, match, validGoalBets);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["match", matchId] });
       queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
       queryClient.invalidateQueries({ queryKey: ["userGoalBets", userId, matchId] });
-      alert("予想を保存しました！");
+      alert("予想をすべて保存しました！");
     },
     onError: (err: any) => {
       alert("保存に失敗しました: " + (err.message || "エラーが発生しました"));
@@ -111,20 +150,11 @@ function MatchDetailPage() {
 
   const canBet = match.status === "scheduled";
 
-  // 1249件の選手データをセレクトボックスの <optgroup> 用に国（チーム）ごとにグループ化
-  const groupedPlayers = players.reduce((acc, player) => {
-    if (!acc[player.team]) {
-      acc[player.team] = [];
-    }
-    acc[player.team].push(player);
-    return acc;
-  }, {} as Record<string, typeof players>);
-
   return (
     <AppShell title={`${match.home_team} vs ${match.away_team}`}>
       <div className="p-4 space-y-6 max-w-xl mx-auto">
         
-        {/* 試合カード表示 */}
+        {/* 試合対戦カード */}
         <div className="text-center py-6 bg-card rounded-xl border border-border">
           <div className="flex justify-around items-center text-xl font-bold">
             <div className="text-right w-1/3">{match.home_team}</div>
@@ -134,13 +164,12 @@ function MatchDetailPage() {
           <p className="text-xs text-muted-foreground mt-3">ステータス: {match.status}</p>
         </div>
 
-        {/* 予想入力フォーム */}
         {canBet ? (
           <div className="space-y-6">
             
-            {/* 勝敗予想ブロック */}
+            {/* ① 勝敗予想セクション */}
             <div className="bg-card p-5 rounded-xl border border-border space-y-4">
-              <h2 className="text-base font-semibold text-primary">勝敗予想</h2>
+              <h2 className="text-base font-semibold text-primary">① 勝敗予想</h2>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
@@ -161,7 +190,7 @@ function MatchDetailPage() {
               </div>
               
               <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">勝敗予想に賭けるBASHI額</label>
+                <label className="text-xs text-muted-foreground">勝敗に賭けるBASHI額</label>
                 <Input
                   type="number"
                   placeholder="数値を入力"
@@ -171,45 +200,76 @@ function MatchDetailPage() {
               </div>
             </div>
 
-            {/* 得点者予想ブロック */}
+            {/* ② 得点者 (スコアラー) 複数予想セクション */}
             <div className="bg-card p-5 rounded-xl border border-border space-y-4">
-              <h2 className="text-base font-semibold text-primary">得点者 (スコアラー) 予想</h2>
+              <h2 className="text-base font-semibold text-primary">② 得点者 (スコアラー) 予想</h2>
               
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">選手を選択</label>
-                <select
-                  value={scorerName}
-                  onChange={(e) => setScorerName(e.target.value)}
-                  className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                >
-                  <option value="">-- 選手を選択してください --</option>
-                  {Object.entries(groupedPlayers).map(([teamName, teamPlayers]) => (
-                    <optgroup key={teamName} label={teamName}>
-                      {teamPlayers.map((p) => (
-                        <option key={p.id} value={p.name}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                </select>
+              <div className="space-y-3">
+                {goalBets.map((row, index) => (
+                  <div key={index} className="flex gap-2 items-end border-b border-border/50 pb-3 last:border-0 last:pb-0">
+                    {/* 選手選択ドロップダウン (該当2カ国の選手のみ) */}
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[11px] text-muted-foreground block">選手 {index + 1}</label>
+                      <select
+                        value={row.player_name}
+                        onChange={(e) => updateScorerRow(index, "player_name", e.target.value)}
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <option value="">-- 選手を選択 --</option>
+                        {homePlayers.length > 0 && (
+                          <optgroup label={match.home_team}>
+                            {homePlayers.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                          </optgroup>
+                        )}
+                        {awayPlayers.length > 0 && (
+                          <optgroup label={match.away_team}>
+                            {awayPlayers.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+
+                    {/* 純粋な数値入力の金額欄 */}
+                    <div className="w-32 space-y-1">
+                      <label className="text-[11px] text-muted-foreground block">賭けるBASHI</label>
+                      <Input
+                        type="number"
+                        placeholder="数値"
+                        value={row.amount}
+                        onChange={(e) => updateScorerRow(index, "amount", e.target.value)}
+                      />
+                    </div>
+
+                    {/* 行削除ボタン */}
+                    {goalBets.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="px-3 h-10"
+                        onClick={() => removeScorerRow(index)}
+                      >
+                        ✕
+                      </Button>
+                    )}
+                  </div>
+                ))}
               </div>
 
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">ゴール予想に賭けるBASHI額</label>
-                <Input
-                  type="number"
-                  placeholder="数値を入力"
-                  value={goalAmount}
-                  onChange={(e) => setGoalAmount(e.target.value)}
-                />
-              </div>
+              {/* 予想追加ボタン */}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full text-xs mt-2"
+                onClick={addScorerRow}
+              >
+                + 別の得点者予想を追加する
+              </Button>
             </div>
 
-            {/* 確定ボタン */}
+            {/* 確定保存ボタン */}
             <Button
               onClick={() => mutation.mutate()}
-              className="w-full py-6 text-base font-bold bg-primary text-primary-foreground"
+              className="w-full py-6 text-base font-bold bg-primary text-primary-foreground rounded-xl"
               disabled={mutation.isPending}
             >
               {mutation.isPending ? "保存中..." : "この内容で予想を確定する"}
