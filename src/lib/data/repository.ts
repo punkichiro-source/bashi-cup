@@ -321,7 +321,7 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
         user_id,
         users ( name ),
         match_id,
-        matches ( home_team, away_team, status, winner, scorers )
+        matches ( home_team, away_team, status, winner, scorers, kickoff_time )
       `)
       .order("created_at", { ascending: false });
 
