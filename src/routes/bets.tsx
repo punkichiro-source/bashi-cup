@@ -36,8 +36,21 @@ function resultBadge(row: any): { label: string; cls: string } | null {
   if (status !== "finished") return null;
   const win = (row?.payout ?? 0) > 0;
   return win
-    ? { label: `的中！ (+${formatBashi(row.payout)})`, cls: "bg-primary/20 text-primary" }
+    ? { label: `的中！ (+${formatBashi(row.payout)})`, cls: "bg-primary/20 text-primary animate-pulse" }
     : { label: "ハズレ", cls: "bg-destructive/20 text-destructive" };
+}
+
+// タイムゾーンバグを防ぎつつ日本時間を表示するフォーマット関数
+function formatKickoff(dateString?: string): string {
+  if (!dateString) return "";
+  try {
+    const [datePart, timePart] = dateString.split(/[\sT]/);
+    const [, month, day] = datePart.split("-");
+    const [hour, minute] = timePart.split(":");
+    return `📅 ${parseInt(month)}/${parseInt(day)} ${hour}:${minute}`;
+  } catch (e) {
+    return "";
+  }
 }
 
 function Empty() {
@@ -52,14 +65,11 @@ function BetCard({
   who,
   what,
   amount,
-  when,
   result,
 }: {
   who: string;
   what?: string;
   amount: number;
-  when?: string;
-  side?: string;
   result?: { label: string; cls: string } | null;
 }) {
   return (
@@ -77,12 +87,6 @@ function BetCard({
           </span>
         )}
       </div>
-      
-      {when && (
-        <p className="text-[10px] text-muted-foreground/70 text-right">
-          {formatDateTime(when)}
-        </p>
-      )}
     </div>
   );
 }
@@ -98,139 +102,168 @@ function BetsPage() {
   const goalBets = data?.goalBets ?? [];
   const championBets = data?.championBets ?? [];
 
-  // 【修正ポイント】確実な match_id (または m.id) を利用し、他試合が混ざるのを完全防止
-  const groupedMatchBets = matchBets.reduce((acc: any, bet: any) => {
-    const m = bet.matches;
-    const mId = bet.match_id || m?.id;
-    if (!mId || !m) return acc; // 試合情報が完全に紐づいていない不正データはスキップ
-    
-    if (!acc[mId]) {
-      acc[mId] = { match: m, bets: [] };
+  // --- ① グループ化 & 日時順ソートロジック（勝敗） ---
+  const processGroups = (bets: any[]) => {
+    const grouped = bets.reduce((acc: any, bet: any) => {
+      const m = bet.matches;
+      const mId = bet.match_id || m?.id;
+      if (!mId || !m) return acc;
+      
+      if (!acc[mId]) {
+        acc[mId] = { match: m, bets: [] };
+      }
+      acc[mId].bets.push(bet);
+      return acc;
+    }, {});
+
+    // 配列化してキックオフ日時の古い順（開催が近い順）にソート
+    return Object.values(grouped).sort((a: any, b: any) => {
+      return new Date(a.match.kickoff_time).getTime() - new Date(b.match.kickoff_time).getTime();
+    });
+  };
+
+  const sortedMatchGroups = processGroups(matchBets);
+  const sortedGoalGroups = processGroups(goalBets);
+
+  // ステータスで「受付中/LIVE（未精算）」と「終了（精算済み）」にフィルタリング
+  const activeMatchGroups = sortedMatchGroups.filter((g: any) => g.match.status !== "finished");
+  const settledMatchGroups = sortedMatchGroups.filter((g: any) => g.match.status === "finished");
+
+  const activeGoalGroups = sortedGoalGroups.filter((g: any) => g.match.status !== "finished");
+  const settledGoalGroups = sortedGoalGroups.filter((g: any) => g.match.status === "finished");
+
+  // --- ③ 優勝予想をメンバー（ユーザー）ごとに集計ロジック ---
+  const groupedChampionBetsByUsers = championBets.reduce((acc: any, bet: any) => {
+    const uName = userName(bet);
+    if (!acc[uName]) {
+      acc[uName] = [];
     }
-    acc[mId].bets.push(bet);
+    acc[uName].push(bet);
     return acc;
   }, {});
 
-  // 【修正ポイント】ゴール予想も同様に独立した確実な ID をベースに仕分ける
-  const groupedGoalBets = goalBets.reduce((acc: any, bet: any) => {
-    const m = bet.matches;
-    const mId = bet.match_id || m?.id;
-    if (!mId || !m) return acc;
-    
-    if (!acc[mId]) {
-      acc[mId] = { match: m, bets: [] };
-    }
-    acc[mId].bets.push(bet);
-    return acc;
-  }, {});
+  // メンバーごとのカードを描画する共通コンポーネント
+  const renderMatchList = (groups: any[], isGoal: boolean) => (
+    <div className="space-y-4">
+      {groups.map((group: any) => {
+        const badge = matchStatusBadge(group.match.status);
+        return (
+          <div key={group.match.id} className="border border-border rounded-xl p-3 bg-muted/10 space-y-3">
+            <div className="flex flex-col gap-1 border-b border-border/40 pb-2">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-sm font-bold text-foreground">
+                  {matchLabel(group.match)}
+                </h3>
+                <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
+                  {badge.label}
+                </span>
+              </div>
+              {/* ② キックオフ日時を追記 */}
+              <p className="text-[10px] font-medium text-muted-foreground/80">
+                {formatKickoff(group.match.kickoff_time)}
+              </p>
+            </div>
+            <div className="space-y-2">
+              {group.bets.map((b: any) => (
+                <BetCard
+                  key={b.id}
+                  who={userName(b)}
+                  what={
+                    isGoal
+                      ? `⚽ 得点者: ${b.player_name}`
+                      : b.pick === "HOME"
+                      ? `🏠 ${group.match.home_team || "ホーム"} 勝利`
+                      : `🚌 ${group.match.away_team || "アウェイ"} 勝利`
+                  }
+                  amount={b.amount}
+                  result={resultBadge(b)}
+                />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 
   return (
     <AppShell title="みんなの予想">
       <p className="mb-4 text-xs text-muted-foreground">
-        参加者全員の予想を試合ごとに確認できます。
+        参加者全員の予想をリアルタイムで確認できます。
       </p>
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">読み込み中...</p>
+        <p className="text-sm text-muted-foreground animate-pulse">読み込み中...</p>
       ) : (
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4 mb-4">
             <TabsTrigger value="match">勝敗</TabsTrigger>
             <TabsTrigger value="goal">ゴール</TabsTrigger>
             <TabsTrigger value="champion">優勝</TabsTrigger>
+            <TabsTrigger value="results">結果</TabsTrigger>
           </TabsList>
 
-          {/* ① 勝敗予想（試合単位） */}
-          <TabsContent value="match" className="space-y-4 mt-3">
-            {Object.keys(groupedMatchBets).length === 0 ? (
-              <Empty />
-            ) : (
-              Object.values(groupedMatchBets).map((group: any) => {
-                const badge = matchStatusBadge(group.match.status);
-                return (
-                  <div key={group.match.id} className="border border-border rounded-xl p-3 bg-muted/10 space-y-3">
-                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                      <h3 className="font-display text-sm font-bold text-foreground">
-                        {matchLabel(group.match)}
-                      </h3>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {group.bets.map((b: any) => (
-                        <BetCard
-                          key={b.id}
-                          who={userName(b)}
-                          what={b.pick === "HOME" ? `🏠 ${group.match.home_team || "ホーム"} 勝利` : `🚌 ${group.match.away_team || "アウェイ"} 勝利`}
-                          amount={b.amount}
-                          when={b.created_at}
-                          result={resultBadge(b)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          {/* ① 勝敗予想（開催前の未精算分のみ表示） */}
+          <TabsContent value="match" className="mt-0">
+            {activeMatchGroups.length === 0 ? <Empty /> : renderMatchList(activeMatchGroups, false)}
           </TabsContent>
 
-          {/* ② ゴール予想（試合単位） */}
-          <TabsContent value="goal" className="space-y-4 mt-3">
-            {Object.keys(groupedGoalBets).length === 0 ? (
-              <Empty />
-            ) : (
-              Object.values(groupedGoalBets).map((group: any) => {
-                const badge = matchStatusBadge(group.match.status);
-                return (
-                  <div key={group.match.id} className="border border-border rounded-xl p-3 bg-muted/10 space-y-3">
-                    <div className="flex items-center justify-between border-b border-border/40 pb-2">
-                      <h3 className="font-display text-sm font-bold text-foreground">
-                        {matchLabel(group.match)}
-                      </h3>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {group.bets.map((b: any) => (
-                        <BetCard
-                          key={b.id}
-                          who={userName(b)}
-                          what={`⚽ 得点者: ${b.player_name}`}
-                          amount={b.amount}
-                          when={b.created_at}
-                          result={resultBadge(b)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                );
-              })
-            )}
+          {/* ② ゴール予想（開催前の未精算分のみ表示） */}
+          <TabsContent value="goal" className="mt-0">
+            {activeGoalGroups.length === 0 ? <Empty /> : renderMatchList(activeGoalGroups, true)}
           </TabsContent>
 
-          {/* ③ 優勝国予想（全体リスト） */}
-          <TabsContent value="champion" className="space-y-2 mt-3">
-            {championBets.length === 0 ? (
+          {/* ③ 優勝国予想（メンバーごとの表示に刷新） */}
+          <TabsContent value="champion" className="space-y-3 mt-0">
+            {Object.keys(groupedChampionBetsByUsers).length === 0 ? (
               <Empty />
             ) : (
-              championBets.map((b: any) => (
-                <div key={b.id} className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
-                  <div>
-                    <p className="font-display text-base text-primary">{userName(b)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      👑 優勝国: <span className="text-foreground font-semibold">{b.team}</span>
-                    </p>
-                    <span className="inline-block mt-2 rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
-                      第{b.rank}候補
-                    </span>
+              Object.entries(groupedChampionBetsByUsers).map(([user, bets]: [string, any]) => (
+                <div key={user} className="rounded-xl border border-border bg-card p-4 space-y-3">
+                  <div className="border-b border-border/40 pb-1.5">
+                    <p className="font-display text-base font-bold text-primary">👤 {user} さんの予想</p>
                   </div>
-                  <div className="text-right">
-                    <span className="text-sm font-bold text-primary">{formatBashi(b.amount)}</span>
-                    <p className="text-[9px] text-muted-foreground/70 mt-1">{formatDateTime(b.created_at)}</p>
+                  <div className="grid grid-cols-1 gap-2">
+                    {bets.map((b: any) => (
+                      <div key={b.id} className="flex items-center justify-between bg-muted/30 p-2.5 rounded-lg text-xs">
+                        <div>
+                          <p className="font-medium text-foreground">
+                            👑 優勝国: <span className="text-primary font-bold">{b.team}</span>
+                          </p>
+                          <span className="inline-block mt-1 text-[10px] text-muted-foreground">
+                            第{b.rank}候補
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-foreground">{formatBashi(b.amount)}</p>
+                          <p className="text-[9px] text-muted-foreground/60 mt-0.5">{formatDateTime(b.created_at)}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))
+            )}
+          </TabsContent>
+
+          {/* ④ 結果タブ（精算後の全勝敗・ゴール予想、当選金や当たりハズレを表示） */}
+          <TabsContent value="results" className="space-y-6 mt-0">
+            {settledMatchGroups.length === 0 && settledGoalGroups.length === 0 ? (
+              <Empty />
+            ) : (
+              <>
+                {settledMatchGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <h2 className="text-xs font-bold text-muted-foreground tracking-wider uppercase pl-1">【精算済み】勝敗予想の結果</h2>
+                    {renderMatchList(settledMatchGroups, false)}
+                  </div>
+                )}
+                {settledGoalGroups.length > 0 && (
+                  <div className="space-y-3">
+                    <h2 className="text-xs font-bold text-muted-foreground tracking-wider uppercase pl-1">【精算済み】ゴール予想の結果</h2>
+                    {renderMatchList(settledGoalGroups, true)}
+                  </div>
+                )}
+              </>
             )}
           </TabsContent>
         </Tabs>
