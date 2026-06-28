@@ -40,14 +40,20 @@ function resultBadge(row: any): { label: string; cls: string } | null {
     : { label: "ハズレ", cls: "bg-destructive/20 text-destructive" };
 }
 
-// タイムゾーンバグを防ぎつつ日本時間を表示するフォーマット関数
+// 🔥 【修正】どんな環境でも確実に日本時間（JST）の24時間表記で出力する安全な関数
 function formatKickoff(dateString?: string): string {
   if (!dateString) return "";
   try {
-    const [datePart, timePart] = dateString.split(/[\sT]/);
-    const [, month, day] = datePart.split("-");
-    const [hour, minute] = timePart.split(":");
-    return `📅 ${parseInt(month)}/${parseInt(day)} ${hour}:${minute}`;
+    const date = new Date(dateString);
+    // タイムゾーンを Asia/Tokyo に強制固定
+    return "📅 " + date.toLocaleString("ja-JP", {
+      timeZone: "Asia/Tokyo",
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
   } catch (e) {
     return "";
   }
@@ -102,7 +108,7 @@ function BetsPage() {
   const goalBets = data?.goalBets ?? [];
   const championBets = data?.championBets ?? [];
 
-  // --- ① グループ化 & 日時順ソートロジック（勝敗） ---
+  // グループ化 & 日時順ソートロジック
   const processGroups = (bets: any[]) => {
     const grouped = bets.reduce((acc: any, bet: any) => {
       const m = bet.matches;
@@ -122,6 +128,7 @@ function BetsPage() {
     });
   };
 
+  // 🔥 【修正】goalBets にはしっかりと goalBets のデータを通してソートをかける
   const sortedMatchGroups = processGroups(matchBets);
   const sortedGoalGroups = processGroups(goalBets);
 
@@ -132,7 +139,7 @@ function BetsPage() {
   const activeGoalGroups = sortedGoalGroups.filter((g: any) => g.match.status !== "finished");
   const settledGoalGroups = sortedGoalGroups.filter((g: any) => g.match.status === "finished");
 
-  // --- ③ 優勝予想をメンバー（ユーザー）ごとに集計ロジック ---
+  // 優勝予想をメンバー（ユーザー）ごとに集計
   const groupedChampionBetsByUsers = championBets.reduce((acc: any, bet: any) => {
     const uName = userName(bet);
     if (!acc[uName]) {
@@ -142,7 +149,7 @@ function BetsPage() {
     return acc;
   }, {});
 
-  // メンバーごとのカードを描画する共通コンポーネント
+  // リスト描画用共通コンポーネント
   const renderMatchList = (groups: any[], isGoal: boolean) => (
     <div className="space-y-4">
       {groups.map((group: any) => {
@@ -158,7 +165,6 @@ function BetsPage() {
                   {badge.label}
                 </span>
               </div>
-              {/* ② キックオフ日時を追記 */}
               <p className="text-[10px] font-medium text-muted-foreground/80">
                 {formatKickoff(group.match.kickoff_time)}
               </p>
@@ -202,17 +208,14 @@ function BetsPage() {
             <TabsTrigger value="results">結果</TabsTrigger>
           </TabsList>
 
-          {/* ① 勝敗予想（開催前の未精算分のみ表示） */}
           <TabsContent value="match" className="mt-0">
             {activeMatchGroups.length === 0 ? <Empty /> : renderMatchList(activeMatchGroups, false)}
           </TabsContent>
 
-          {/* ② ゴール予想（開催前の未精算分のみ表示） */}
           <TabsContent value="goal" className="mt-0">
             {activeGoalGroups.length === 0 ? <Empty /> : renderMatchList(activeGoalGroups, true)}
           </TabsContent>
 
-          {/* ③ 優勝国予想（メンバーごとの表示に刷新） */}
           <TabsContent value="champion" className="space-y-3 mt-0">
             {Object.keys(groupedChampionBetsByUsers).length === 0 ? (
               <Empty />
@@ -245,7 +248,6 @@ function BetsPage() {
             )}
           </TabsContent>
 
-          {/* ④ 結果タブ（精算後の全勝敗・ゴール予想、当選金や当たりハズレを表示） */}
           <TabsContent value="results" className="space-y-6 mt-0">
             {settledMatchGroups.length === 0 && settledGoalGroups.length === 0 ? (
               <Empty />
