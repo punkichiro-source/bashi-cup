@@ -4,7 +4,8 @@ import type { GoalBet, MatchBet } from "@/types/domain";
 
 export const PAYOUT = {
   MATCH_WIN: 5,
-  SCORER_SINGLE: 5,
+  // 💡 ここを 5 から 20 に変更しました
+  SCORER_SINGLE: 20, 
   CHAMPION_RANK_1: 20,
   CHAMPION_RANK_2: 10,
   CHAMPION_RANK_3: 5,
@@ -40,7 +41,7 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
   // 【重要】再精算・修正対応のための払い戻し取消処理
   // ==========================================
   // すでに過去の精算(settled=true)で配当金(payout > 0)を受け取っているユーザーがいた場合、
-  // その分の残高をマイナスして一度リセットします（これで何度結果を変更しても破綻しなくなります）
+  // その分の残高をマイナスして一度リセットします
   
   // ① 勝敗予想の過去配当を回収リセット
   const { data: oldMb } = await supabase
@@ -87,7 +88,7 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
   // 3. 最新の結果に基づき、全予想データ(すべて)を再計算
   // ==========================================
   
-  // ① 勝敗予想の精算ループ（全件を対象にするため .eq("settled", false) は外します）
+  // ① 勝敗予想の精算ループ
   const { data: mb } = await supabase
     .from("match_bets")
     .select("*")
@@ -97,10 +98,8 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     const win = bet.pick === side;
     const payout = win ? bet.amount * PAYOUT.MATCH_WIN : 0;
     
-    // DBの精算状態を最新に更新
     await supabase.from("match_bets").update({ settled: true, payout }).eq("id", bet.id);
     
-    // 的中していれば配当金を加算
     if (payout > 0) {
       await applyBalanceChange(bet.user_id, payout, "payout", `勝敗的中: ${label}`);
     }
@@ -116,10 +115,8 @@ export async function processPayout(matchId: string, result: MatchResult): Promi
     const hit = result.scorers?.includes(bet.player_name) ?? false;
     const payout = hit ? bet.amount * PAYOUT.SCORER_SINGLE : 0;
     
-    // DBの精算状態を最新に更新
     await supabase.from("goal_bets").update({ settled: true, payout }).eq("id", bet.id);
     
-    // 的中していれば配当金を加算
     if (payout > 0) {
       await applyBalanceChange(bet.user_id, payout, "payout", `ゴール的中 (${bet.player_name}): ${label}`);
     }
