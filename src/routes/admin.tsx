@@ -205,13 +205,11 @@ function AdminPage() {
                   >
                     <option value="">+ ゴールを決めた選手を追加</option>
                     <optgroup label={m.home_team || "HOME"}>
-                      {/* 🛠️ 修正: 表示の判定でも一貫してクリーン化した国名（matchHomeClean）で一致チェックを行う */}
                       {availablePlayers.filter(p => cleanTeamName(p.team) === matchHomeClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
                     <optgroup label={m.away_team || "AWAY"}>
-                      {/* 🛠️ 修正: 表示の判定でも一貫してクリーン化した国名（matchAwayClean）で一致チェックを行う */}
                       {availablePlayers.filter(p => cleanTeamName(p.team) === matchAwayClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
@@ -275,8 +273,9 @@ function AdminPage() {
                         
                         if (error) throw error;
                         
-                        await supabase.from("match_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
-                        await supabase.from("goal_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
+                        // 🛠️ 【修正箇所】 .eq("id", m.id) から .eq("match_id", m.id) に修正
+                        await supabase.from("match_bets").update({ settled: false, payout: 0 }).eq("match_id", m.id);
+                        await supabase.from("goal_bets").update({ settled: false, payout: 0 }).eq("match_id", m.id);
                       }, () => "精算の取り消し・残高の回収が完了しました！未精算状態に戻っています。");
                     }}
                   >
