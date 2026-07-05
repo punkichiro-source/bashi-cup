@@ -12,12 +12,13 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
-// 国名から国旗絵文字や前後の余計な空白を綺麗に消し去るヘルパー関数
+// 🔥 【超重要修正】
+// 英数字・ひらがな・カタカナ・漢字のみを残し、イングランド等の国旗の裏にある隠れた制御文字を100%完全に消し去る関数
 function cleanTeamName(name: string | null | undefined): string {
   if (!name) return "";
   return name
-    .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, "") // 絵文字を削除
-    .trim(); // 前後の空白を削除
+    .replace(/[^a-zA-Z0-9\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/g, "") // 日本語・英数字以外を全削除
+    .trim();
 }
 
 function AdminPage() {
@@ -80,13 +81,22 @@ function AdminPage() {
         <h2 className="text-lg font-bold border-b pb-2">試合結果の入力と管理</h2>
         
         {matches?.map((m: any) => {
-          // 💡 表記ブレ吸収ロジック：絵文字や空白を消した状態で国名を比較
           const matchHomeClean = cleanTeamName(m.home_team);
           const matchAwayClean = cleanTeamName(m.away_team);
 
+          // 🔥 【修正】制御文字を排除したクリーン名、または相互の部分一致（includes）で堅牢に判定
           const availablePlayers = players.filter((p) => {
+            if (!p.team) return false;
             const playerTeamClean = cleanTeamName(p.team);
-            return playerTeamClean === matchHomeClean || playerTeamClean === matchAwayClean;
+
+            return (
+              (playerTeamClean && playerTeamClean === matchHomeClean) ||
+              (playerTeamClean && playerTeamClean === matchAwayClean) ||
+              p.team.includes(m.home_team || "___NONE___") ||
+              (m.home_team || "___NONE___").includes(p.team) ||
+              p.team.includes(m.away_team || "___NONE___") ||
+              (m.away_team || "___NONE___").includes(p.team)
+            );
           });
 
           const currentScorers = matchScorers[m.id] || [];
@@ -205,12 +215,18 @@ function AdminPage() {
                   >
                     <option value="">+ ゴールを決めた選手を追加</option>
                     <optgroup label={m.home_team || "HOME"}>
-                      {availablePlayers.filter(p => cleanTeamName(p.team) === matchHomeClean).map(p => (
+                      {availablePlayers.filter(p => {
+                        const pct = cleanTeamName(p.team);
+                        return pct === matchHomeClean || (p.team && m.home_team && p.team.includes(m.home_team));
+                      }).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
                     <optgroup label={m.away_team || "AWAY"}>
-                      {availablePlayers.filter(p => cleanTeamName(p.team) === matchAwayClean).map(p => (
+                      {availablePlayers.filter(p => {
+                        const pct = cleanTeamName(p.team);
+                        return pct === matchAwayClean || (p.team && m.away_team && p.team.includes(m.away_team));
+                      }).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
@@ -273,7 +289,6 @@ function AdminPage() {
                         
                         if (error) throw error;
                         
-                        // 🛠️ 【修正箇所】 .eq("id", m.id) から .eq("match_id", m.id) に修正
                         await supabase.from("match_bets").update({ settled: false, payout: 0 }).eq("match_id", m.id);
                         await supabase.from("goal_bets").update({ settled: false, payout: 0 }).eq("match_id", m.id);
                       }, () => "精算の取り消し・残高の回収が完了しました！未精算状態に戻っています。");
