@@ -85,44 +85,20 @@ function MatchDetailPage() {
     }
   }, [existingGoalBets]);
 
-  // 🔍 デバッグ用：何が原因で消えているかをコンソールに強制出力
-  useEffect(() => {
-    if (allPlayers.length > 0) {
-      console.log("=== 【緊急デバッグ】選手データの構造チェック ===");
-      console.log("全選手数:", allPlayers.length);
-      console.log("選手データの1件目の身元:", JSON.stringify(allPlayers[0]));
-      console.log("match.home_teamの中身:", match?.home_team);
+  // 💡 【100%安全】全選手を国名（p.team）ごとに確実にグループ化する処理
+  const groupedPlayers = allPlayers.reduce((acc, player) => {
+    const teamName = player.team || "所属不明";
+    if (!acc[teamName]) {
+      acc[teamName] = [];
     }
-  }, [allPlayers, match]);
+    acc[teamName].push(player);
+    return acc;
+  }, {} as Record<string, typeof allPlayers>);
 
-  // 💡 安全にチーム名を判別するロジック (英語名・日本語名・部分一致・プロパティ名違いを網羅)
-  const isTargetTeam = (player: any, matchTeam: string | undefined) => {
-    if (!player || !matchTeam) return false;
-    const pTeam = (player.team || player.team_name || player.country || "").toString().trim().toLowerCase();
-    const mTeam = matchTeam.toString().trim().toLowerCase();
-    if (!pTeam) return false;
-
-    // 完全一致 or 部分一致判定
-    if (pTeam === mTeam || pTeam.includes(mTeam) || mTeam.includes(pTeam)) return true;
-
-    // メキシコ、イングランドの主な表記ブレをカバーするマッピング
-    const dict: Record<string, string[]> = {
-      mexico: ["mexico", "mex", "メキシコ"],
-      england: ["england", "eng", "イングランド"],
-    };
-
-    for (const key in dict) {
-      const aliases = dict[key];
-      const matchMatches = aliases.some(a => mTeam.includes(a) || a.includes(mTeam));
-      const playerMatches = aliases.some(a => pTeam.includes(a) || a.includes(pTeam));
-      if (matchMatches && playerMatches) return true;
-    }
-    return false;
-  };
-
-  // ホーム・アウェイそれぞれのチームに所属する選手だけを抽出
-  const homePlayers = allPlayers.filter(p => isTargetTeam(p, match?.home_team));
-  const awayPlayers = allPlayers.filter(p => isTargetTeam(p, match?.away_team));
+  // アルファベット・五十音順で国名グループの並び順を整える
+  const sortedTeams = Object.keys(groupedPlayers).sort((a, b) => 
+    a.localeCompare(b, "ja")
+  );
 
   const addScorerRow = () => setGoalBets([...goalBets, { player_name: "", amount: "" }]);
   const removeScorerRow = (index: number) => {
@@ -229,23 +205,16 @@ function MatchDetailPage() {
                       >
                         <option value="">-- 選手を選択 --</option>
                         
-                        {/* 💡 ホームチームのグループ */}
-                        {homePlayers.length > 0 && (
-                          <optgroup label={match.home_team}>
-                            {homePlayers.map(p => (
-                              <option key={p.id} value={p.name}>{p.name}</option>
+                        {/* 💡 全ての国と選手を漏れなくグループ化して出力（データ上の名称で確定表示） */}
+                        {sortedTeams.map(teamName => (
+                          <optgroup key={teamName} label={teamName}>
+                            {groupedPlayers[teamName].map(p => (
+                              <option key={p.id} value={p.name}>
+                                {p.name}
+                              </option>
                             ))}
                           </optgroup>
-                        )}
-
-                        {/* 💡 アウェイチームのグループ */}
-                        {awayPlayers.length > 0 && (
-                          <optgroup label={match.away_team}>
-                            {awayPlayers.map(p => (
-                              <option key={p.id} value={p.name}>{p.name}</option>
-                            ))}
-                          </optgroup>
-                        )}
+                        ))}
                       </select>
                     </div>
 
