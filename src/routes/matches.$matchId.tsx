@@ -95,6 +95,35 @@ function MatchDetailPage() {
     }
   }, [allPlayers, match]);
 
+  // 💡 安全にチーム名を判別するロジック (英語名・日本語名・部分一致・プロパティ名違いを網羅)
+  const isTargetTeam = (player: any, matchTeam: string | undefined) => {
+    if (!player || !matchTeam) return false;
+    const pTeam = (player.team || player.team_name || player.country || "").toString().trim().toLowerCase();
+    const mTeam = matchTeam.toString().trim().toLowerCase();
+    if (!pTeam) return false;
+
+    // 完全一致 or 部分一致判定
+    if (pTeam === mTeam || pTeam.includes(mTeam) || mTeam.includes(pTeam)) return true;
+
+    // メキシコ、イングランドの主な表記ブレをカバーするマッピング
+    const dict: Record<string, string[]> = {
+      mexico: ["mexico", "mex", "メキシコ"],
+      england: ["england", "eng", "イングランド"],
+    };
+
+    for (const key in dict) {
+      const aliases = dict[key];
+      const matchMatches = aliases.some(a => mTeam.includes(a) || a.includes(mTeam));
+      const playerMatches = aliases.some(a => pTeam.includes(a) || a.includes(pTeam));
+      if (matchMatches && playerMatches) return true;
+    }
+    return false;
+  };
+
+  // ホーム・アウェイそれぞれのチームに所属する選手だけを抽出
+  const homePlayers = allPlayers.filter(p => isTargetTeam(p, match?.home_team));
+  const awayPlayers = allPlayers.filter(p => isTargetTeam(p, match?.away_team));
+
   const addScorerRow = () => setGoalBets([...goalBets, { player_name: "", amount: "" }]);
   const removeScorerRow = (index: number) => {
     const updated = [...goalBets];
@@ -196,15 +225,27 @@ function MatchDetailPage() {
                       <select
                         value={row.player_name}
                         onChange={(e) => updateScorerRow(index, "player_name", e.target.value)}
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <option value="">-- 選手を選択 --</option>
-                        {/* 💡 フィルタを完全に撤廃し、データが存在すれば全選手を強制表示 */}
-                        {allPlayers.map(p => (
-                          <option key={p.id} value={p.name}>
-                            {p.name} ({p.team || "所属不明"})
-                          </option>
-                        ))}
+                        
+                        {/* 💡 ホームチームのグループ */}
+                        {homePlayers.length > 0 && (
+                          <optgroup label={match.home_team}>
+                            {homePlayers.map(p => (
+                              <option key={p.id} value={p.name}>{p.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+
+                        {/* 💡 アウェイチームのグループ */}
+                        {awayPlayers.length > 0 && (
+                          <optgroup label={match.away_team}>
+                            {awayPlayers.map(p => (
+                              <option key={p.id} value={p.name}>{p.name}</option>
+                            ))}
+                          </optgroup>
+                        )}
                       </select>
                     </div>
 
