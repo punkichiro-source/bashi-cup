@@ -205,11 +205,13 @@ function AdminPage() {
                   >
                     <option value="">+ ゴールを決めた選手を追加</option>
                     <optgroup label={m.home_team || "HOME"}>
+                      {/* 🛠️ 修正: 表示の判定でも一貫してクリーン化した国名（matchHomeClean）で一致チェックを行う */}
                       {availablePlayers.filter(p => cleanTeamName(p.team) === matchHomeClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
                     <optgroup label={m.away_team || "AWAY"}>
+                      {/* 🛠️ 修正: 表示の判定でも一貫してクリーン化した国名（matchAwayClean）で一致チェックを行う */}
                       {availablePlayers.filter(p => cleanTeamName(p.team) === matchAwayClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
