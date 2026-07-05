@@ -1,3 +1,5 @@
+"use client";
+
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect } from "react";
@@ -132,8 +134,7 @@ function MatchDetailPage() {
       await saveGoalBets(activeUserId, match, validGoalBets);
     },
     onSuccess: async () => {
-      // 全体の更新に加え、ヘッダーの残高コンポーネントを狙い撃ちして即時リフレッシュ
-      await queryClient.invalidateQueries();
+      // 関連するキャッシュターゲットを確実にリフレッシュ
       await queryClient.invalidateQueries({ queryKey: ["balance"] });
       await queryClient.invalidateQueries({ queryKey: ["user"] });
       await queryClient.invalidateQueries({ queryKey: ["userMatchBet", userId, matchId] });
