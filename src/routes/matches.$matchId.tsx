@@ -85,20 +85,51 @@ function MatchDetailPage() {
     }
   }, [existingGoalBets]);
 
-  // 💡 【100%安全】全選手を国名（p.team）ごとに確実にグループ化する処理
-  const groupedPlayers = allPlayers.reduce((acc, player) => {
-    const teamName = player.team || "所属不明";
-    if (!acc[teamName]) {
-      acc[teamName] = [];
-    }
-    acc[teamName].push(player);
-    return acc;
-  }, {} as Record<string, typeof allPlayers>);
+  // 💡 【プランA実装】CSV内の実際の表記揺れ・トーナメント未確定枠を安全に分解・判定するロジック
+  const getPossibleTeams = (matchTeamName: string | undefined): string[] => {
+    if (!matchTeamName) return [];
+    const name = matchTeamName.trim();
 
-  // アルファベット・五十音順で国名グループの並び順を整える
-  const sortedTeams = Object.keys(groupedPlayers).sort((a, b) => 
-    a.localeCompare(b, "ja")
-  );
+    // 1. 「DRコンゴ」と「コンゴ民主共和国」の相互変換
+    if (name === "DRコンゴ" || name === "コンゴ民主共和国") {
+      return ["DRコンゴ", "コンゴ民主共和国"];
+    }
+
+    // 2. 「アメリカ/ベルギーの勝者」などのスラッシュ区切りトーナメント枠を分解
+    if (name.includes("/")) {
+      // 末尾の「の勝者」「の敗者」を取り除く
+      const cleanName = name.replace(/の(勝者|敗者)$/, "");
+      const parts = cleanName.split("/").map(p => p.trim());
+      
+      // 各国について、さらに個別変換（DRコンゴ等）があれば展開
+      return parts.flatMap(p => {
+        if (p === "DRコンゴ" || p === "コンゴ民主共和国") {
+          return ["DRコンゴ", "コンゴ民主共和国"];
+        }
+        return [p];
+      });
+    }
+
+    return [name];
+  };
+
+  const isMatchPlayer = (playerTeam: string | undefined, matchTeamName: string | undefined): boolean => {
+    if (!playerTeam || !matchTeamName) return false;
+    
+    const pTeam = playerTeam.trim();
+    const possibleTeams = getPossibleTeams(matchTeamName);
+
+    // 抽出された候補のいずれかに完全一致、または部分一致するか
+    return possibleTeams.some(t => 
+      pTeam === t || 
+      pTeam.includes(t) || 
+      t.includes(pTeam)
+    );
+  };
+
+  // 割り出された国に合致する選手だけを取り出す
+  const homePlayers = allPlayers.filter(p => isMatchPlayer(p.team, match?.home_team));
+  const awayPlayers = allPlayers.filter(p => isMatchPlayer(p.team, match?.away_team));
 
   const addScorerRow = () => setGoalBets([...goalBets, { player_name: "", amount: "" }]);
   const removeScorerRow = (index: number) => {
@@ -205,16 +236,31 @@ function MatchDetailPage() {
                       >
                         <option value="">-- 選手を選択 --</option>
                         
-                        {/* 💡 全ての国と選手を漏れなくグループ化して出力（データ上の名称で確定表示） */}
-                        {sortedTeams.map(teamName => (
-                          <optgroup key={teamName} label={teamName}>
-                            {groupedPlayers[teamName].map(p => (
-                              <option key={p.id} value={p.name}>
-                                {p.name}
-                              </option>
+                        {/* ホームチームの選手表示 */}
+                        {homePlayers.length > 0 ? (
+                          <optgroup label={match.home_team}>
+                            {homePlayers.map(p => (
+                              <option key={p.id} value={p.name}>{p.name} ({p.team})</option>
                             ))}
                           </optgroup>
-                        ))}
+                        ) : (
+                          <optgroup label={`${match.home_team} (該当選手なし)`}>
+                            <option disabled>対戦カード確定後に選択可能になります</option>
+                          </optgroup>
+                        )}
+
+                        {/* アウェイチームの選手表示 */}
+                        {awayPlayers.length > 0 ? (
+                          <optgroup label={match.away_team}>
+                            {awayPlayers.map(p => (
+                              <option key={p.id} value={p.name}>{p.name} ({p.team})</option>
+                            ))}
+                          </optgroup>
+                        ) : (
+                          <optgroup label={`${match.away_team} (該当選手なし)`}>
+                            <option disabled>対戦カード確定後に選択可能になります</option>
+                          </optgroup>
+                        )}
                       </select>
                     </div>
 
