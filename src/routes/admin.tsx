@@ -12,6 +12,14 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+// 国名から国旗絵文字や前後の余計な空白を綺麗に消し去るヘルパー関数
+function cleanTeamName(name: string | null | undefined): string {
+  if (!name) return "";
+  return name
+    .replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD00-\uDFFF]/g, "") // 絵文字を削除
+    .trim(); // 前後の空白を削除
+}
+
 function AdminPage() {
   const { user, loading } = useSession();
   const navigate = useNavigate();
@@ -39,7 +47,7 @@ function AdminPage() {
     setBusy(key);
     try {
       const r = await fn();
-      qc.invalidateQueries();
+      await qc.invalidateQueries();
       toast.success(msg(r));
     } catch (e) { 
       console.error(e);
@@ -72,9 +80,15 @@ function AdminPage() {
         <h2 className="text-lg font-bold border-b pb-2">試合結果の入力と管理</h2>
         
         {matches?.map((m: any) => {
-          const availablePlayers = players.filter(
-            (p) => p.team === m.home_team || p.team === m.away_team
-          );
+          // 💡 表記ブレ吸収ロジック：絵文字や空白を消した状態で国名を比較
+          const matchHomeClean = cleanTeamName(m.home_team);
+          const matchAwayClean = cleanTeamName(m.away_team);
+
+          const availablePlayers = players.filter((p) => {
+            const playerTeamClean = cleanTeamName(p.team);
+            return playerTeamClean === matchHomeClean || playerTeamClean === matchAwayClean;
+          });
+
           const currentScorers = matchScorers[m.id] || [];
 
           return (
@@ -90,7 +104,7 @@ function AdminPage() {
                 </span>
               </div>
 
-              {/* 【新機能】国名修正・変更フォーム */}
+              {/* 国名修正・変更フォーム */}
               <div className="p-3 bg-muted/30 border rounded-lg space-y-2">
                 <label className="text-[11px] font-bold text-muted-foreground block">🛠️ 国名の修正（未定枠の確定など）</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -191,12 +205,12 @@ function AdminPage() {
                   >
                     <option value="">+ ゴールを決めた選手を追加</option>
                     <optgroup label={m.home_team || "HOME"}>
-                      {availablePlayers.filter(p => p.team === m.home_team).map(p => (
+                      {availablePlayers.filter(p => cleanTeamName(p.team) === matchHomeClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
                     <optgroup label={m.away_team || "AWAY"}>
-                      {availablePlayers.filter(p => p.team === m.away_team).map(p => (
+                      {availablePlayers.filter(p => cleanTeamName(p.team) === matchAwayClean).map(p => (
                         <option key={p.id} value={p.name}>{p.name}</option>
                       ))}
                     </optgroup>
@@ -228,7 +242,7 @@ function AdminPage() {
                   {busy === "p" ? "精算処理中..." : "試合結果を確定して精算を実行"}
                 </button>
 
-                {/* 【新機能】誤入力リセットボタン */}
+                {/* 誤入力リセットボタン */}
                 {m.settled && (
                   <button
                     type="button"
@@ -238,16 +252,13 @@ function AdminPage() {
                       if (!confirm("本当にこの試合の精算を取り消しますか？ユーザーに配当された残高は自動的に回収・マイナスされます。")) return;
                       
                       await run(`reset-${m.id}`, async () => {
-                        // ① まず payout.ts 内に仕込んだ「マイナス相殺」ロジックを発動させるため、
-                        // 0スコアかつ誰も的中しないダミー状態で一度 processPayout を走らせて過去の配当を全回収します
                         await processPayout(m.id, {
                           home_score: 0,
                           away_score: 0,
                           winner: "draw",
-                          scorers: ["__NEVER_MATCH_RESET_KEY__"] // 誰も賭けていないダミー名
+                          scorers: ["__NEVER_MATCH_RESET_KEY__"]
                         });
 
-                        // ② その後、ステータスを「未精算のスケジュール」に完全に巻き戻します
                         const { error } = await supabase
                           .from("matches")
                           .update({
@@ -262,7 +273,6 @@ function AdminPage() {
                         
                         if (error) throw error;
                         
-                        // ③ 紐づくユーザーの投票データの精算状態も未精算(false)に戻す
                         await supabase.from("match_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
                         await supabase.from("goal_bets").update({ settled: false, payout: 0 }).eq("id", m.id);
                       }, () => "精算の取り消し・残高の回収が完了しました！未精算状態に戻っています。");
