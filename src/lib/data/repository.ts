@@ -210,29 +210,41 @@ export async function saveChampionBets(
   }
 }
 
-// ---- 選手一覧をDBから安全に取得（100件制限突破・JS側ソート完全版） ----
+// ---- 選手一覧をDBから安全に取得（1000件制限突破・ページネーション対応版） ----
 export async function listPlayers(): Promise<{ id: string; name: string; team: string }[]> {
   try {
-    // 生のテーブルから、0〜1500の範囲指定（range）を使って1249件を一気にフェッチします
-    const { data, error } = await supabase
-      .from("players")
-      .select("id, name, team")
-      .range(0, 1500);
-    
-    if (error) {
-      console.error("playersテーブルから直接取得する際にエラーが発生しました:", error);
-      return [];
+    const limit = 1000;
+    let allData: { id: string; name: string; team: string }[] = [];
+    let from = 0;
+    let hasMore = true;
+
+    // Supabaseの「1回1000件まで」の制限を回避するため、データが無くなるまでループで取得を繰り返す
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from("players")
+        .select("id, name, team")
+        .range(from, from + limit - 1);
+      
+      if (error) {
+        console.error("playersテーブルからの取得エラー:", error);
+        return [];
+      }
+
+      if (data && data.length > 0) {
+        allData = [...allData, ...data];
+        from += limit;
+        if (data.length < limit) {
+          hasMore = false;
+        }
+      } else {
+        hasMore = false;
+      }
     }
 
-    const rawList = data || [];
-
-    // 取得した1249件をプログラム側で並び替えます
-    return rawList.sort((a, b) => {
-      // 1. まずは国名（team）でアルファベット/五十音順に並び替え
+    return allData.sort((a, b) => {
       if (a.team !== b.team) {
         return a.team.localeCompare(b.team, "ja");
       }
-      // 2. 同じ国の中では、名前（name）順にする
       return a.name.localeCompare(b.name, "ja");
     });
 
@@ -243,7 +255,6 @@ export async function listPlayers(): Promise<{ id: string; name: string; team: s
 }
 
 // ---- 管理者用：試合結果と得点者を保存し、的中判定・配当まで実行する ----
-// 配当ロジックは payout.ts に集約。ここから processPayout を呼び出して精算する。
 export async function updateMatchResult(
   matchId: string,
   updates: {
@@ -251,10 +262,9 @@ export async function updateMatchResult(
     away_score: number;
     status: "scheduled" | "live" | "finished";
     winner: "HOME" | "AWAY" | string | null;
-    scorers: string[]; // 選択された得点者（名前の配列）
+    scorers: string[];
   }
 ): Promise<void> {
-  // 結果が確定（finished）した場合は processPayout で精算まで一気に行う
   if (updates.status === "finished") {
     const { processPayout } = await import("@/lib/data/payout");
     await processPayout(matchId, {
@@ -279,10 +289,8 @@ export async function updateMatchResult(
 
   if (error) throw error;
 }
-// =========================================================================
-// ---- みんなの予想一覧取得用（ダッシュボード・全件表示用） ----
-// =========================================================================
 
+// ---- みんなの予想一覧取得用 ----
 export interface AllUsersBets {
   matchBets: any[];
   goalBets: any[];
@@ -291,7 +299,6 @@ export interface AllUsersBets {
 
 export async function listAllUsersBets(): Promise<AllUsersBets> {
   try {
-    // 1. 全員の「勝敗予想」を試合情報・ユーザー名付きで取得
     const { data: matchBets, error: mErr } = await supabase
       .from("match_bets")
       .select(`
@@ -308,7 +315,6 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
       `)
       .order("created_at", { ascending: false });
 
-    // 2. 全員の「ゴール（得点者）予想」を取得
     const { data: goalBets, error: gErr } = await supabase
       .from("goal_bets")
       .select(`
@@ -325,7 +331,6 @@ export async function listAllUsersBets(): Promise<AllUsersBets> {
       `)
       .order("created_at", { ascending: false });
 
-    // 3. 全員の「優勝予想」を取得
     const { data: championBets, error: cErr } = await supabase
       .from("champion_bets")
       .select(`
